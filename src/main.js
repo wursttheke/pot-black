@@ -1034,6 +1034,18 @@ $('btnOptions').addEventListener('click', e => { e.stopPropagation(); setOptions
 $('optMenu').addEventListener('click', e => e.stopPropagation());
 addEventListener('pointerdown', e => { if (!e.target.closest('.dropdown')) setOptionsOpen(false); });
 addEventListener('keydown', e => { if (e.key === 'Escape') setOptionsOpen(false); });
+
+// Spielernamen im Browser merken (localStorage) und beim nächsten Besuch wieder eintragen
+for (const id of ['n1', 'n2']) {
+  const key = `potblack.${id}`;
+  try {
+    const saved = localStorage.getItem(key);
+    if (saved) $(id).value = saved;
+  } catch { /* Speicher nicht verfügbar */ }
+  $(id).addEventListener('input', () => {
+    try { localStorage.setItem(key, $(id).value.trim()); } catch { /* Speicher nicht verfügbar */ }
+  });
+}
 setMode('ai');
 
 $('start').addEventListener('click', () => {
