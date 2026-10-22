@@ -1,0 +1,20 @@
+# Abhängigkeiten und Build-Artefakte
+node_modules/
+dist/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Betriebssystem und Editoren
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Lokale Claude-Code-Einstellungen (persönlich); launch.json bleibt versioniert
+.claude/settings.local.json
+
+# Umgebungsvariablen
+.env
+.env.*

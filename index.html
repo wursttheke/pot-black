@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pot Black</title>
+<style>
+  :root { --fg: #f3efe4; --muted: #a9a59a; --panel: rgba(12, 14, 18, 0.78); --accent: #e8b84a; --line: rgba(255,255,255,0.12); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0b0e; color: var(--fg); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #app canvas { display: block; touch-action: none; cursor: crosshair; }
+  .hidden { display: none !important; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(6px); }
+  button { font: inherit; color: var(--fg); background: #2a2e36; border: 1px solid var(--line); border-radius: 7px; padding: 7px 12px; cursor: pointer; }
+  button:hover:not(:disabled) { background: #363b45; }
+  button:disabled { opacity: 0.45; cursor: default; }
+
+  /* Anzeigetafel */
+  #board { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; gap: 0; padding: 0; overflow: hidden; }
+  .player { padding: 8px 18px; min-width: 170px; display: flex; justify-content: space-between; align-items: center; gap: 14px; opacity: 0.55; }
+  .player.active { opacity: 1; background: rgba(232,184,74,0.14); box-shadow: inset 0 -3px 0 var(--accent); }
+  .player .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+  .player .score { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #mid { padding: 6px 16px; border-left: 1px solid var(--line); border-right: 1px solid var(--line); font-size: 12px; color: var(--muted); display: grid; grid-template-columns: auto auto; column-gap: 10px; align-content: center; }
+  #mid b { color: var(--fg); font-weight: 600; }
+  #frames { grid-column: 1 / 3; text-align: center; color: var(--fg); font-size: 11px; letter-spacing: .04em; }
+  #on { padding: 0 6px; border-radius: 4px; }
+  .on-red { background: #b00d18; } .on-yellow { background: #c9a100; } .on-green { background: #0a6a2e; } .on-brown { background: #6a3418; }
+  .on-blue { background: #1240b0; } .on-pink { background: #d9628e; } .on-black { background: #000; border: 1px solid #555; } .on-colour { background: linear-gradient(90deg,#c9a100,#0a6a2e,#6a3418,#1240b0,#d9628e,#000); }
+
+  #msg { position: fixed; top: 84px; left: 50%; transform: translateX(-50%); padding: 8px 16px; opacity: 0; transition: opacity .3s; pointer-events: none; max-width: 80vw; text-align: center; }
+  #msg.show { opacity: 1; }
+  #status { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); padding: 6px 14px; color: var(--muted); font-size: 13px; }
+
+  /* Stoßstärke */
+  #powerBox { position: fixed; left: 16px; bottom: 16px; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  #power { width: 34px; height: 200px; border-radius: 6px; background: #1b1e24; border: 1px solid var(--line); position: relative; overflow: hidden; cursor: ns-resize; touch-action: none; }
+  #powerFill { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(0deg, #3fae5a, #e8b84a 60%, #d9483b); }
+  #powerVal { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .lbl { font-size: 11px; color: var(--muted); }
+
+  /* Treffpunkt */
+  #spinBox { position: fixed; right: 16px; bottom: 16px; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  #spin { width: 150px; height: 150px; cursor: pointer; touch-action: none; }
+
+  #tools { position: fixed; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 6px; align-items: stretch; z-index: 6; }
+  .dropdown { position: relative; display: flex; flex-direction: column; }
+  #btnOptions { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  #btnOptions .caret { font-size: 15px; line-height: 1; transition: transform .15s; }
+  #btnOptions[aria-expanded="true"] .caret { transform: rotate(180deg); }
+  .opt-menu { position: absolute; top: calc(100% + 6px); right: 0; min-width: 100%; padding: 6px; display: flex; flex-direction: column; gap: 4px; white-space: nowrap; }
+  .opt-menu button { text-align: left; }
+  #btnShoot { background: #8a5a12; border-color: #c38a2a; font-weight: 600; }
+  #btnShoot:hover:not(:disabled) { background: #a06a18; }
+  #tools button.on { border-color: var(--accent); }
+  #btnPlace { position: fixed; left: 50%; bottom: 20vh; transform: translateX(-50%); z-index: 4;
+    padding: 14px 44px; font-size: 20px; font-weight: 700; letter-spacing: .02em; border-radius: 12px;
+    background: #8a5a12; border: 1px solid #c38a2a; box-shadow: 0 6px 24px rgba(0,0,0,0.45); }
+  #btnPlace:hover { background: #a06a18; }
+  .modal { z-index: 40; }
+
+  /* Feier-Animationen */
+  #fx { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 60; }
+  #celebrate { position: fixed; left: 50%; top: 26%; transform: translate(-50%, -50%) scale(0.6); z-index: 61; pointer-events: none;
+    text-align: center; opacity: 0; transition: opacity .5s; white-space: nowrap; }
+  #celebrate h2 { margin: 0; font-size: clamp(34px, 7vw, 72px); font-weight: 900; letter-spacing: .02em; color: #fff;
+    text-shadow: 0 4px 24px rgba(0,0,0,.6), 0 0 2px rgba(0,0,0,.8); }
+  #celebrate p { margin: 6px 0 0; font-size: clamp(14px, 2.2vw, 22px); font-weight: 600; color: #f3efe4; text-shadow: 0 2px 10px rgba(0,0,0,.7); }
+  #celebrate.show { opacity: 1; animation: pop .7s cubic-bezier(.2, 1.6, .4, 1) forwards; }
+  #celebrate.lvl2 h2 { color: #ffd84a; text-shadow: 0 0 18px rgba(255,200,40,.75), 0 4px 24px rgba(0,0,0,.7), 0 0 2px rgba(0,0,0,.9); }
+  #celebrate.lvl3.show { animation: pop .8s cubic-bezier(.2, 1.6, .4, 1) forwards, pulse 1.2s ease-in-out .8s infinite; }
+  #celebrate.lvl3 h2 { color: #ffd84a; text-shadow: 0 0 22px currentColor, 0 4px 24px rgba(0,0,0,.7), 0 0 2px rgba(0,0,0,.9); }
+  #celebrate.lvl3.show h2 { animation: rainbow 2.4s linear infinite; }
+  @keyframes pop { from { transform: translate(-50%, -50%) scale(0.4); } to { transform: translate(-50%, -50%) scale(1); } }
+  @keyframes pulse { 0%, 100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.08); } }
+  @keyframes rainbow { 0%, 100% { color: #ffd84a; } 25% { color: #ff6b8a; } 50% { color: #6bc4ff; } 75% { color: #8dff9a; } }
+
+  #help { position: fixed; top: 12px; left: 12px; padding: 12px 14px; font-size: 12.5px; max-width: min(300px, calc(100vw - 32px)); z-index: 5; }
+  #help h3 { margin: 0; font-size: 13px; }
+  #help .help-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  #helpClose { padding: 0 8px; line-height: 22px; font-size: 16px; background: transparent; border-color: transparent; color: var(--muted); }
+  #helpClose:hover { color: var(--fg); }
+  #help table { border-collapse: collapse; }
+  #help td { padding: 2px 6px 2px 0; vertical-align: top; }
+  #help td:first-child { color: var(--accent); white-space: nowrap; }
+  #help .legend span { display: inline-block; width: 18px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 4px; }
+
+  /* Menü und Dialoge */
+  .modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.45); padding: 16px; }
+  .modal .panel { padding: 22px 26px; max-width: 520px; width: 100%; }
+  .modal h1 { margin: 0 0 4px; font-size: 30px; letter-spacing: .02em; }
+  .modal h2 { margin: 0 0 10px; }
+  .modal p { margin: 8px 0; }
+  .modal .fb { color: var(--accent); font-weight: 600; }
+  .modal input { font: inherit; color: var(--fg); background: #1b1e24; border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; width: 100%; }
+  .row { display: flex; gap: 10px; margin: 12px 0; }
+  .seg { display: flex; gap: 6px; }
+  .seg button { flex: 1; padding: 9px 10px; }
+  .seg button.on { background: #3a3122; border-color: var(--accent); color: #fff; }
+
+  /* Startbildschirm */
+  #menu { background: radial-gradient(ellipse at 50% 40%, rgba(10,40,20,.35), rgba(0,0,0,.7)); }
+  .panel.start { max-width: 480px; padding: 28px 28px 22px; background: rgba(14,17,21,.86);
+    box-shadow: 0 24px 80px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06); border-radius: 18px; }
+  .brand { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
+  .brand h1 { margin: 0; font-size: 40px; font-weight: 800; letter-spacing: .01em; line-height: 1.05;
+    background: linear-gradient(180deg, #fff, #d9d2bf); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .brand .sub { margin: 4px 0 0; font-size: 13px; }
+  .logo { flex: 0 0 auto; width: 54px; height: 54px; border-radius: 50%;
+    background: radial-gradient(circle at 34% 30%, #6b6b6b 0, #1e1e1e 22%, #050505 60%, #000 100%);
+    box-shadow: 0 8px 20px rgba(0,0,0,.6), 0 0 0 3px rgba(35,150,63,.55); }
+  .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 18px; }
+  @media (max-width: 520px) { .modes { grid-template-columns: 1fr; } }
+  .lobby-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .net-status { font-size: 11px; color: var(--muted); }
+  .net-status.ok { color: #5fd17a; }
+  .lobby { list-style: none; margin: 0; padding: 0; max-height: 210px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; }
+  .lobby li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  .lobby li:last-child { border-bottom: 0; }
+  .lobby .g-names { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lobby .g-state { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .lobby .g-state.open { color: #5fd17a; }
+  .lobby li button { padding: 5px 12px; font-size: 13px; }
+  .lobby .empty { color: var(--muted); font-size: 13px; justify-content: center; }
+  #createGame { width: 100%; padding: 11px; font-size: 15px; border-radius: 10px; background: #8a5a12; border-color: #c38a2a; font-weight: 600; }
+  .mode { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 14px 14px 12px; border-radius: 12px;
+    background: #1c2026; border: 1px solid var(--line); text-align: left; transition: border-color .2s, background .2s, transform .15s; }
+  .mode:hover { background: #232830; }
+  .mode.on { background: linear-gradient(160deg, rgba(232,184,74,.16), rgba(35,150,63,.12)); border-color: var(--accent); }
+  .mode-icon { font-size: 13px; letter-spacing: 3px; color: #23963f; margin-bottom: 4px; }
+  .mode.on .mode-icon { color: var(--accent); }
+  .mode-title { font-size: 17px; font-weight: 700; color: #fff; }
+  .mode-desc { font-size: 12px; color: var(--muted); }
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .field-label { font-size: 12px; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+  .names { display: flex; gap: 10px; }
+  .names .field { flex: 1; min-width: 0; }
+  .reveal { animation: reveal .25s ease-out; }
+  @keyframes reveal { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  #start { width: 100%; padding: 13px; font-size: 17px; border-radius: 12px; margin-top: 4px; }
+  .hint { margin: 14px 0 0 !important; font-size: 12px; color: var(--muted); text-align: center; line-height: 1.5; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .btns button:first-child, #start { background: #8a5a12; border-color: #c38a2a; font-weight: 600; }
+  .sub { color: var(--muted); }
+
+  @media (max-width: 760px) {
+    .player { min-width: 0; padding: 6px 10px; } .player .score { font-size: 20px; }
+    #mid { display: none; } #spin { width: 110px; height: 110px; } #power { height: 140px; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud" class="hidden">
+  <div id="board" class="panel">
+    <div class="player" id="p0"><span class="name" id="p0name"></span><span class="score" id="p0score">0</span></div>
+    <div id="mid">
+      <span>Am Ball:</span><b><span id="on">Rot</span></b>
+      <span>Break:</span><b id="brk">0</b>
+      <span>Rote:</span><b id="reds">15</b>
+      <span>Rest:</span><b id="remain">147</b>
+      <span id="frames"></span>
+    </div>
+    <div class="player" id="p1"><span class="score" id="p1score">0</span><span class="name" id="p1name"></span></div>
+  </div>
+  <div id="msg" class="panel"></div>
+  <div id="status" class="panel"></div>
+  <button id="btnPlace" class="hidden">Platzieren</button>
+
+  <div id="powerBox" class="panel">
+    <span class="lbl">Stärke</span>
+    <div id="power"><div id="powerFill"></div></div>
+    <span id="powerVal">35 %</span>
+  </div>
+
+  <div id="spinBox" class="panel">
+    <span class="lbl">Treffpunkt</span>
+    <canvas id="spin" width="300" height="300"></canvas>
+  </div>
+
+  <div id="tools">
+    <button id="btnShoot">Stoß (Leertaste)</button>
+    <button id="btnLeave">Spiel verlassen</button>
+    <div class="dropdown">
+      <button id="btnOptions" aria-haspopup="true" aria-expanded="false" aria-controls="optMenu">Optionen <span class="caret" aria-hidden="true">▾</span></button>
+      <div id="optMenu" class="opt-menu panel hidden" role="menu">
+        <button id="btnView" role="menuitem">Ansicht</button>
+        <button id="btnLines" role="menuitem">Linien</button>
+        <button id="btnGhost" role="menuitem">Geisterball</button>
+        <button id="btnSound" role="menuitem">Ton</button>
+        <button id="btnHelp" role="menuitem">Steuerung (F1)</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="help" class="panel">
+    <div class="help-head"><h3>Steuerung</h3><button id="helpClose" title="Ausblenden (T)" aria-label="Steuerung ausblenden">×</button></div>
+    <table>
+      <tr><td>Maus ziehen</td><td>Zielen (horizontal), Kopfhöhe (vertikal)</td></tr>
+      <tr><td>Shift + ziehen</td><td>Feinzielen</td></tr>
+      <tr><td>A / D, ← / →</td><td>Zielen (Shift grob, Alt sehr fein)</td></tr>
+      <tr><td>Doppelklick Kugel</td><td>Voll auf diese Kugel zielen</td></tr>
+      <tr><td>W / S, Mausrad</td><td>Stoßstärke (Shift ±5 %)</td></tr>
+      <tr><td>I J K L</td><td>Treffpunkt verschieben, X = mittig</td></tr>
+      <tr><td>Leertaste</td><td>Stoß ausführen</td></tr>
+      <tr><td>V</td><td>Spieler-Sicht / Draufsicht</td></tr>
+      <tr><td>H</td><td>Hilfslinien: voll / kurz / aus</td></tr>
+      <tr><td>G</td><td>Geisterball (Kontaktpunkt und Endposition der Weißen) ein/aus</td></tr>
+      <tr><td>P</td><td>Bei Ball in Hand: neu platzieren</td></tr>
+      <tr><td>M</td><td>Ton an/aus</td></tr>
+      <tr><td>T</td><td>Diese Steuerung ein-/ausblenden</td></tr>
+    </table>
+    <p class="legend"><span style="border-color:#fff"></span>Weiße bis Kontakt, <span style="border-color:#fff;border-top-style:dashed"></span>danach<br>
+      <span style="border-color:#3aa856;border-top-style:dashed"></span>Objektkugel, <span style="border-color:#3aa856;border-top-style:dotted"></span>weitere Kugel</p>
+  </div>
+</div>
+
+<div id="menu" class="modal">
+  <div class="panel start">
+    <header class="brand">
+      <span class="logo" aria-hidden="true"></span>
+      <div>
+        <h1>Pot Black</h1>
+        <p class="sub">Snooker nach WPBSA-Regeln · echte Kugelphysik mit Effet</p>
+      </div>
+    </header>
+
+    <div class="modes" role="radiogroup" aria-label="Spielmodus">
+      <button id="modeAi" class="mode on" role="radio" aria-checked="true">
+        <span class="mode-icon" aria-hidden="true">●</span>
+        <span class="mode-title">Single Player</span>
+        <span class="mode-desc">Gegen den Computer</span>
+      </button>
+      <button id="modePvp" class="mode" role="radio" aria-checked="false">
+        <span class="mode-icon" aria-hidden="true">●●</span>
+        <span class="mode-title">Multi Player</span>
+        <span class="mode-desc">Zwei Spieler an einem Gerät</span>
+      </button>
+      <button id="modeOnline" class="mode" role="radio" aria-checked="false">
+        <span class="mode-icon" aria-hidden="true">◎</span>
+        <span class="mode-title">Online</span>
+        <span class="mode-desc">Spielen oder zuschauen</span>
+      </button>
+    </div>
+
+    <div id="aiRow" class="field reveal">
+      <span class="field-label">Spielstärke</span>
+      <div class="seg" role="radiogroup" aria-label="Spielstärke">
+        <button data-level="easy">Leicht</button>
+        <button data-level="medium" class="on">Mittel</button>
+        <button data-level="hard">Schwer</button>
+      </div>
+    </div>
+
+    <div class="names">
+      <label class="field">
+        <span class="field-label" id="n1Label">Dein Name</span>
+        <input id="n1" value="Spieler 1" maxlength="20">
+      </label>
+      <label class="field reveal hidden" id="n2Field">
+        <span class="field-label">Spieler 2</span>
+        <input id="n2" value="Spieler 2" maxlength="20">
+      </label>
+    </div>
+
+    <div id="onlineRow" class="field reveal hidden">
+      <div class="lobby-head">
+        <span class="field-label">Offene und laufende Spiele</span>
+        <span id="netStatus" class="net-status">Verbinde…</span>
+      </div>
+      <ul id="lobbyList" class="lobby"></ul>
+      <button id="createGame">Neues Spiel erstellen</button>
+    </div>
+
+    <button id="start">Frame starten</button>
+    <p class="hint">Weiße im D platzieren · zielen aus der Spielerperspektive · Stärke und Treffpunkt wählen · Leertaste stößt</p>
+  </div>
+</div>
+
+<div id="overlay" class="modal hidden">
+  <div class="panel">
+    <h2 id="ovTitle"></h2>
+    <div id="ovBody"></div>
+    <div class="btns" id="ovButtons"></div>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

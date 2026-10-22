@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "snooker", "runtimeExecutable": "node", "runtimeArgs": ["serve.js", "8123"], "port": 8123 }
+  ]
+}
