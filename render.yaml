@@ -1,0 +1,14 @@
+# Render Blueprint: ein Node-Webdienst, der das Spiel ausliefert und die WebSocket-Lobby bereitstellt.
+# Keine Abhängigkeiten – es gibt nichts zu bauen. Render setzt PORT automatisch.
+services:
+  - type: web
+    name: pot-black
+    runtime: node
+    plan: free
+    buildCommand: echo "kein Build nötig"
+    startCommand: node serve.js
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

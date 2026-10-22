@@ -12,6 +12,12 @@ npm start
 
 Dann http://localhost:8123 öffnen.
 
+## Deployment auf Render
+
+Das Repository enthält eine `render.yaml`. In Render „New → Blueprint“ wählen und dieses GitHub-Repository
+verbinden; Render startet dann `node serve.js` als Webdienst (Port kommt aus `$PORT`). WebSockets laufen über
+denselben Dienst (`wss://<dienst>.onrender.com/ws`).
+
 ## Online-Modus
 
 Der Server stellt unter `/ws` eine WebSocket-Schnittstelle bereit (ohne externe Pakete). Mitspieler im

@@ -2,5 +2,6 @@
   "name": "pot-black",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node serve.js 8123" }
+  "scripts": { "start": "node serve.js" },
+  "engines": { "node": ">=20" }
 }
