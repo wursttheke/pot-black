@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Schwarze Kugel mit gruenem Rand (wie das Logo im Startbildschirm) -->
+  <defs>
+    <radialGradient id="ball" cx="0.36" cy="0.32" r="0.75">
+      <stop offset="0" stop-color="#7a7a7a"/>
+      <stop offset="0.22" stop-color="#262626"/>
+      <stop offset="0.65" stop-color="#070707"/>
+      <stop offset="1" stop-color="#000"/>
+    </radialGradient>
+  </defs>
+  <circle cx="32" cy="32" r="30" fill="#23963f"/>
+  <circle cx="32" cy="32" r="26" fill="url(#ball)"/>
+  <ellipse cx="23" cy="20" rx="6" ry="4" fill="#fff" opacity="0.55" transform="rotate(-30 23 20)"/>
+</svg>
