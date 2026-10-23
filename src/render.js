@@ -840,24 +840,40 @@ export class View {
   buildCue() {
     const g = this.cue = new THREE.Group();
     const parts = [
-      // [Länge, Radius vorne, Radius hinten, Farbe, Rauheit]
-      [0.006, 0.0047, 0.0047, 0x2a6fd6, 0.9],   // Leder mit Kreide
-      [0.016, 0.0048, 0.0049, 0xf2eee0, 0.3],   // Ferrule
-      [0.98, 0.0049, 0.0105, 0x9c7744, 0.45],   // Esche-Schaft
-      [0.04, 0.0105, 0.011, 0x1a1a1a, 0.3],     // Spleiß-Ring
-      [0.42, 0.011, 0.0145, 0x2b120a, 0.35],    // Ebenholz-Griff
-      [0.012, 0.0145, 0.0145, 0x111111, 0.5],   // Endkappe
+      // [Länge, Radius vorne, Radius hinten, Farbe, Rauheit, Metall]
+      [0.0045, 0.0047, 0.0047, 0x2b3646, 0.95, 0], // Leder (dunkelblau, gekreidet), vorne gewölbt
+      [0.01, 0.0049, 0.0049, 0xe6c068, 0.32, 1],  // Messing-Ferrule
+      [0.9845, 0.0049, 0.0105, 0x9c7744, 0.45, 0], // Esche-Schaft
+      [0.04, 0.0105, 0.011, 0x1a1a1a, 0.3, 0],    // Spleiß-Ring
+      [0.42, 0.011, 0.0145, 0x2b120a, 0.35, 0],   // Ebenholz-Griff
+      [0.012, 0.0145, 0.0145, 0x111111, 0.5, 0],  // Endkappe
     ];
     let z = 0;
-    for (const [len, r0, r1, col, rough] of parts) {
-      const geo = new THREE.CylinderGeometry(r0, r1, len, 20);
-      geo.translate(0, -len / 2 - z, 0);
+    parts.forEach(([len, r0, r1, col, rough, metal], i) => {
+      let geo;
+      if (i === 0) {
+        // Leder mit gewölbter Kuppe (Rotationsprofil von der Mitte der Kuppe nach hinten)
+        const dome = 0.0018, pts = [];
+        for (let k = 0; k <= 8; k++) {
+          const a = (k / 8) * Math.PI / 2;
+          pts.push(new THREE.Vector2(r0 * Math.sin(a), -dome * (1 - Math.cos(a))));
+        }
+        pts.push(new THREE.Vector2(r1, -len), new THREE.Vector2(0, -len));
+        geo = new THREE.LatheGeometry(pts.reverse(), 20);
+        geo.translate(0, -z, 0);
+      } else {
+        geo = new THREE.CylinderGeometry(r0, r1, len, 20);
+        geo.translate(0, -len / 2 - z, 0);
+      }
       geo.rotateX(Math.PI / 2);
-      const m = new THREE.Mesh(geo, new THREE.MeshPhysicalMaterial({ color: col, roughness: rough, clearcoat: 0.5, envMap: this.envMap, envMapIntensity: 0.6 }));
+      const mat = metal
+        ? new THREE.MeshStandardMaterial({ color: col, roughness: rough, metalness: 1, envMap: this.envMap, envMapIntensity: 1.8 })
+        : new THREE.MeshPhysicalMaterial({ color: col, roughness: rough, clearcoat: i === 0 ? 0 : 0.5, envMap: this.envMap, envMapIntensity: 0.6 });
+      const m = new THREE.Mesh(geo, mat);
       m.castShadow = true;
       g.add(m);
       z += len;
-    }
+    });
     g.visible = false;
     this.scene.add(g);
   }
