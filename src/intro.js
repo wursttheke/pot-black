@@ -3,12 +3,12 @@
 // das echte 3D-Modell (dasselbe wie im Spiel) von unten nach oben ins Bild. Acht Einstellungen mit
 // harten Schnitten, etwa 25 Sekunden.
 import * as THREE from 'three';
-import { BALL_R as R, BAULK_Z, D_RADIUS } from './constants.js';
+import { BALL_R as R, BAULK_Z, D_RADIUS, TABLE_L, TABLE_W } from './constants.js';
 
-const WIRE_COLOR = 0x7fdcff;
+const WIRE_COLOR = 0x8ee4ff;
 const GRID_COLOR = 0xffb000;
 const FLOOR_Y = -0.86;
-const SCAN_FROM = FLOOR_Y - 0.02, SCAN_TO = 0.12; // bis knapp über Rahmen und Kugeln
+const SCAN_FROM = FLOOR_Y - 0.02;
 // Spielball (Anstoßposition, wie im Vorspann) und Kamera für die Nahaufnahme, die ihn umkreist
 const CUE_X = D_RADIUS / 2, CUE_Z = BAULK_Z;
 const ORBIT_SPEED = 0.07; // Winkelgeschwindigkeit der Kreisfahrt im Vorspann (attract.js)
@@ -52,10 +52,10 @@ const TRACES = [
 ];
 const BALLS_FROM = 13.8, BALLS_TO = 15.6, BALLS_EMITTER = [1.8, 2.8, -2.6];
 const CUE_DRAW = [16.1, 18.0], CUE_SCAN = [18.1, 19.5], CUE_EMITTER = [CUE_X + 0.6, 1.5, CUE_Z + 1.25];
-const SCAN = [20.6, 23.8];
-// Danach steigt das Leuchten weiter nach oben aus dem Bild und verblasst dabei
-const SCAN_RISE = [23.8, 24.9], SCAN_TOP = 3.2;
-const FADE_WIRES = [23.3, 24.1], FADE_GRID = [22.8, 24.4];
+// Scanner vom Boden bis über das Bild hinaus in einem Zug, gleichmäßig beschleunigt (wird nie langsamer)
+const SCAN = [20.4, 24.9], SCAN_TOP = 2.4;
+const scanHeight = u => lerp(SCAN_FROM, SCAN_TOP, 0.3 * u + 0.7 * u * u);
+const FADE_WIRES = [23.7, 24.3], FADE_GRID = [22.8, 24.4];
 // Übergang in die Raumstimmung des Vorspanns: Hintergrundfarbe, Nebel und Boden
 const BLEND = [22.4, 25.0];
 
@@ -120,6 +120,7 @@ function wireMaterial(color, opacity) {
         float keep = mix(1.0, smoothstep(-0.035, 0.004, d), uScanOn);
         vec3 c = mix(uColor, vec3(1.0), band * 0.75) * (1.0 + band * 2.5);
         gl_FragColor = vec4(c, uOpacity * keep + band);
+        #include <colorspace_fragment>
       }`,
   });
   Object.defineProperty(m, 'opacity', { get: () => u.uOpacity.value, set: val => { u.uOpacity.value = val; } });
@@ -348,6 +349,31 @@ export class Intro {
       new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
     this.scanner.visible = false;
     this.group.add(this.scanner);
+
+    // Leuchtrahmen um den Tisch mit einem nach unten auslaufenden Lichtvorhang: bleibt auch über dem
+    // Tisch gut sichtbar, sodass der Scan als eine durchgehende Bewegung bis aus dem Bild zu sehen ist
+    const cc = document.createElement('canvas');
+    cc.width = 4; cc.height = 128;
+    const cg = cc.getContext('2d');
+    const vg = cg.createLinearGradient(0, 0, 0, 128);
+    vg.addColorStop(0, 'rgba(255,255,255,1)');
+    vg.addColorStop(0.04, 'rgba(170,235,255,0.95)');
+    vg.addColorStop(0.25, 'rgba(90,200,255,0.35)');
+    vg.addColorStop(1, 'rgba(60,160,255,0)');
+    cg.fillStyle = vg;
+    cg.fillRect(0, 0, 4, 128);
+    const curtainMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cc), transparent: true, blending: THREE.AdditiveBlending,
+      depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
+    const hx = TABLE_W / 2 + 0.2, hz = TABLE_L / 2 + 0.2, ch = 0.22;
+    this.curtain = new THREE.Group();
+    for (const [w, x, z, ry] of [[2 * hx, 0, hz, 0], [2 * hx, 0, -hz, 0], [2 * hz, hx, 0, Math.PI / 2], [2 * hz, -hx, 0, Math.PI / 2]]) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, ch).translate(0, -ch / 2, 0), curtainMat);
+      m.position.set(x, 0, z);
+      m.rotation.y = ry;
+      this.curtain.add(m);
+    }
+    this.curtain.visible = false;
+    this.group.add(this.curtain);
   }
 
   aimLaser(l, from, to, flicker) {
@@ -457,18 +483,20 @@ export class Intro {
     for (let k = used; k < this.lasers.length; k++) this.hideLaser(this.lasers[k]);
 
     // Scanner hebt die Schnittebene an: das echte Modell erscheint
-    // Höhe: die Beine zügig, dann langsamer durch Zarge, Rahmen, Tuch und Kugeln
+    // Eine durchgehende Bewegung vom Boden bis über das Bild hinaus
     const s = clamp01((t - SCAN[0]) / (SCAN[1] - SCAN[0]));
-    const TABLE_BASE = -0.27;
-    const h = s < 0.3 ? lerp(SCAN_FROM, TABLE_BASE, ease(s / 0.3) * 0.9 + (s / 0.3) * 0.1)
-      : lerp(TABLE_BASE, SCAN_TO, 1 - (1 - (s - 0.3) / 0.7) ** 2);
+    const h = s > 0 ? scanHeight(s) : SCAN_FROM;
     this.plane.constant = h;
-    SCAN_U.uScanOn.value = s > 0 ? 1 - ease(clamp01((t - SCAN[1]) / 0.6)) : 0;
-    const rise = clamp01((t - SCAN_RISE[0]) / (SCAN_RISE[1] - SCAN_RISE[0]));
-    this.scanner.visible = s > 0 && rise < 1;
-    this.scanner.position.y = lerp(h, SCAN_TOP, rise * rise);
-    this.scanner.material.opacity = Math.min(1, s / 0.1) * (1 - ease(rise));
-    SCAN_U.uScanH.value = this.scanner.position.y; // das Leuchtband auf den Flächen läuft mit nach oben
+    SCAN_U.uScanH.value = h;
+    SCAN_U.uScanOn.value = s > 0 && s < 1 ? 1 : 0;
+    this.scanner.visible = s > 0 && s < 1;
+    this.scanner.position.y = h;
+    // Einblenden am Boden, Ausblenden auf dem Weg nach oben aus dem Bild
+    const scanAlpha = Math.min(1, s / 0.06) * (1 - ease(clamp01((s - 0.8) / 0.2)));
+    this.scanner.material.opacity = scanAlpha;
+    this.curtain.visible = this.scanner.visible;
+    this.curtain.position.y = h;
+    this.curtain.children[0].material.opacity = scanAlpha;
     for (const sh of this.ballShadows) sh.visible = h > R * 2;
     this.blend(ease(clamp01((t - BLEND[0]) / (BLEND[1] - BLEND[0]))));
 
