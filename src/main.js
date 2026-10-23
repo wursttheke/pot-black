@@ -80,6 +80,7 @@ function shoot() {
   if (st.travel) { st.aim = st.travel.to; st.travel = null; }
   st.mode = 'shooting';
   st.shotT = 0;
+  st.predFading = true;
   // Beginn einer Aufnahme: Kugeln auf dem Tisch merken (für die Clearance-Erkennung)
   if (frame.breakPts === 0) st.visitStart = balls.filter(b => b.onTable && b.kind !== 'cue').length;
   st.shotCam = { pos: view.camera.position.clone(), look: camLook.clone(), up: view.camera.up.clone() };
@@ -1249,6 +1250,12 @@ function loop(now) {
 
   if (st.mode === 'shooting') {
     st.shotT += dt;
+    // Hilfslinien und Geisterbälle mit Beginn des Stoßes kurz ausblenden
+    if (st.predFading) {
+      const f = 1 - st.shotT / 0.15;
+      if (f > 0) view.setPredictionFade(f);
+      else { st.predFading = false; view.setPrediction(null); view.setPredictionFade(1); }
+    }
     const { pull, hit } = strokePull(st.shotT, st.power);
     view.setCue(true, cue, st.aim, st.tipX, st.tipY, pull, st.elev);
     if (hit) doStrike();

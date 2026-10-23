@@ -959,6 +959,17 @@ export class View {
     line.visible = true;
   }
 
+  // Hilfslinien und Geisterbälle ein-/ausblenden (f = 1 voll sichtbar, 0 unsichtbar), z. B. beim Stoß
+  setPredictionFade(f) {
+    if (!this.predMats) {
+      const mats = new Set([...Object.values(this.guides).map(l => l.material)]);
+      for (const o of [this.ghost, this.endGhost]) o.traverse(m => { if (m.material) mats.add(m.material); });
+      this.predMats = [...mats].map(m => ({ m, base: m.opacity }));
+    }
+    for (const { m, base } of this.predMats) m.opacity = base * f;
+    this.invalidate();
+  }
+
   setPrediction(pred) {
     const G = this.guides;
     if (!pred) {
