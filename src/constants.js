@@ -41,7 +41,7 @@ export const PHYS = {
   cushionSideGrip: 0.075, // zusätzlicher Griff der Bande nur für Seiteneffet (stärkere Winkeländerung)
   cushionNose: 1.27, // Höhe der Bandennase in Kugelradien
   squirt: 0.022,     // Ablenkung durch Seiteneffet (rad pro Radius Versatz)
-  swerve: 1.5e-4,    // Kurve der Weißen durch Seiteneffet (m/s² pro rad/s)
+  swerve: 2e-4,    // Kurve der Weißen durch Seiteneffet (m/s² pro rad/s)
   maxSpeed: 6.2,     // m/s bei 100 % Stoßstärke
   maxSpin: 1.1,      // max. Spin am äußersten Treffpunkt (Umfangs- / Kugelgeschwindigkeit), gilt für Zug, Nachlauf und Effet
   dt: 0.0005,
