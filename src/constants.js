@@ -32,6 +32,8 @@ export const PHYS = {
   g: 9.81,
   muSlide: 0.2875,   // Gleitreibung Kugel/Tuch (Übergang Gleiten -> Rollen)
   muRoll: 0.016,     // Rollwiderstand
+  rollSoft: 0.04,    // unterhalb etwa dieses Tempos (m/s) lässt der Rollwiderstand nach: weiches Auslaufen
+  rollDrag: 0.018,   // geschwindigkeitsabhängiger Anteil des Rollwiderstands (1/s)
   spinDecel: 12.65,  // Abbau Seiteneffet durch Bohrreibung (rad/s²)
   eBall: 0.95,       // Stoßzahl Kugel/Kugel
   muBall: 0.06,      // Reibung Kugel/Kugel (Throw, Effetübertragung)

@@ -131,8 +131,10 @@ function integrate(b, dt) {
   } else {
     const s = Math.hypot(b.vx, b.vz);
     if (s > 0) {
-      const dv = PHYS.muRoll * g * dt;
-      if (s <= dv || s < 0.004) { b.vx = 0; b.vz = 0; }
+      // Rollwiderstand: kurz vor dem Stillstand nachlassend (die Kugel kriecht sanft aus),
+      // bei hohem Tempo etwas stärker
+      const dv = (PHYS.muRoll * g * s / (s + PHYS.rollSoft) + PHYS.rollDrag * s) * dt;
+      if (s <= dv || s < 0.002) { b.vx = 0; b.vz = 0; }
       else { const k = (s - dv) / s; b.vx *= k; b.vz *= k; }
     }
     b.wz = -b.vx / R; b.wx = b.vz / R;
