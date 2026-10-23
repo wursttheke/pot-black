@@ -647,9 +647,11 @@ function computePrediction() {
 
 const camPos = new THREE.Vector3(0, 3, 4), camLook = new THREE.Vector3(), camUp = new THREE.Vector3(0, 1, 0);
 const tPos = new THREE.Vector3(), tLook = new THREE.Vector3(), tUp = new THREE.Vector3();
+let tFov = 50; // Bildwinkel der aktuellen Einstellung (nur die TV-Hauptkamera zoomt)
 const tmpF = new THREE.Vector3(), tmpR = new THREE.Vector3(), Y_UP = new THREE.Vector3(0, 1, 0);
 
 function cameraTarget() {
+  tFov = BASE_FOV;
   const cam = view.camera;
   if (st.debugCam) { // per Konsole: snooker.st.debugCam = { pos: [x, y, z], look: [x, y, z] }
     tPos.set(...st.debugCam.pos); tLook.set(...st.debugCam.look); tUp.set(0, 1, 0);
@@ -752,13 +754,18 @@ function broadcastActive() {
   return st.mode !== 'menu' && st.camMode !== 'top' && !st.debugCam && !!frame && inputLocked();
 }
 
+// Hauptkamera der TV-Regie: weiter weg und mit engerem Bildwinkel (Teleobjektiv), damit sich der
+// Tisch nach hinten weniger verjüngt; der Abstand wird so umgerechnet, dass der Ausschnitt gleich bleibt
+const BASE_FOV = 50, TV_FOV = 36, TV_ZOOM = 1.12; // TV_ZOOM > 1: enger als der berechnete Ausschnitt
 function tvMainCam() {
   // Hinter der Kopfbande (Seite mit dem Spot der Schwarzen), erhöht, Blick über den ganzen Tisch
   const cam = view.camera;
-  const hHalf = Math.atan(Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * cam.aspect);
-  const d = Math.max(4.0, 1.3 / Math.tan(hHalf));
-  const el = 0.62; // ca. 35° über der Tischebene
-  return { pos: [0, d * Math.sin(el), -0.25 - d * Math.cos(el)], look: [0, 0, -0.1] };
+  const half = THREE.MathUtils.degToRad(BASE_FOV / 2);
+  const hHalf = Math.atan(Math.tan(half) * cam.aspect);
+  // Zoom nur, solange der Tisch in der Breite ins Bild passt (Hochformat: die Breite begrenzt)
+  const d = Math.max(4.0 / TV_ZOOM, 1.3 / Math.tan(hHalf)) * Math.tan(half) / Math.tan(THREE.MathUtils.degToRad(TV_FOV / 2));
+  const el = 0.56; // ca. 32° über der Tischebene
+  return { pos: [0, d * Math.sin(el), -0.25 - d * Math.cos(el)], look: [0, 0, -0.1], fov: TV_FOV };
 }
 
 // Schnittfolge für den kommenden Stoß vorausberechnen (gleiche Physik wie die Anzeige):
@@ -800,6 +807,7 @@ function broadcastCam() {
     for (const c of st.broadcast.cuts) if (c.t <= t) cam = c.cam;
   }
   tPos.set(...cam.pos); tLook.set(...cam.look); tUp.set(0, 1, 0);
+  tFov = cam.fov || BASE_FOV;
 }
 
 // Läuft die Weiße aus dem Bild, schwenkt die Kamera auf die Mitte zwischen ursprünglichem
@@ -835,6 +843,11 @@ function updateCamera(dt) {
   const k = cut ? 1 : 1 - Math.exp(-dt * (st.travel ? 4 : st.mode === 'aim' ? 14 : 5));
   camPos.lerp(tPos, k); camLook.lerp(tLook, k); camUp.lerp(tUp, k).normalize();
   const cam = view.camera;
+  const fov = cut ? tFov : cam.fov + (tFov - cam.fov) * k;
+  if (Math.abs(fov - cam.fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix(); }
+  // Nebel mit dem Kameraabstand verschieben: aus größerer Entfernung wird der Tisch sonst dunkler
+  const extra = Math.max(0, camPos.length() - 4.5);
+  view.scene.fog.near = 6 + extra; view.scene.fog.far = 14 + extra;
   cam.position.copy(camPos);
   cam.up.copy(camUp);
   cam.lookAt(camLook);
