@@ -1,14 +1,14 @@
-# Render Blueprint: ein Node-Webdienst, der das Spiel ausliefert.
-# Keine Abhängigkeiten – es gibt nichts zu bauen. Render setzt PORT automatisch.
+# Render Blueprint: das Spiel als statische Seite (kein Server, nichts zu bauen).
+# Cache-Control „no-cache“: Browser fragen bei jedem Laden nach, ob sich eine Datei geändert hat
+# (per ETag, unverändert kommt nur eine kurze Antwort) – nach einem Deploy sind alle Module sofort aktuell.
 services:
   - type: web
     name: pot-black
-    runtime: node
-    plan: free
+    runtime: static
     buildCommand: echo "kein Build nötig"
-    startCommand: node serve.js
-    healthCheckPath: /
+    staticPublishPath: .
     autoDeploy: true
-    envVars:
-      - key: NODE_VERSION
-        value: "22"
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: no-cache

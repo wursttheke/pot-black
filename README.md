@@ -14,8 +14,13 @@ Dann http://localhost:8123 öffnen.
 
 ## Deployment auf Render
 
-Das Repository enthält eine `render.yaml`. In Render „New → Blueprint“ wählen und dieses GitHub-Repository
-verbinden; Render startet dann `node serve.js` als Webdienst (Port kommt aus `$PORT`).
+Das Spiel ist eine statische Seite: `index.html`, die Module in `src/`, `sounds/` und Bilder; three.js kommt
+per CDN. Das Repository enthält eine `render.yaml` für eine Render „Static Site“: In Render „New → Blueprint“
+wählen und dieses GitHub-Repository verbinden. Jeder Push auf `main` wird automatisch veröffentlicht.
+`serve.js` wird nur für die lokale Entwicklung gebraucht.
+
+Die Vorschau-Tags für geteilte Links (`og:url`, `og:image` in `index.html`) enthalten die feste Adresse
+`https://pot-black.onrender.com` – bei einer anderen Domain dort anpassen.
 
 ## Aufbau
 

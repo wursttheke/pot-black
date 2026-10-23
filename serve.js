@@ -1,5 +1,6 @@
-// Lokaler Server: liefert das Spiel ohne Browser-Caching aus (ES-Module werden sonst veraltet geladen).
-// Start: node serve.js [port] – auf Hosting-Plattformen (z. B. Render) kommt der Port aus $PORT.
+// Lokaler Entwicklungsserver: liefert das Spiel ohne Browser-Caching aus (ES-Module werden sonst veraltet
+// geladen; per file:// laden Browser sie gar nicht). Online läuft das Spiel als statische Seite.
+// Start: npm start bzw. node serve.js [port]
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -21,12 +22,6 @@ const TYPES = {
   '.wav': 'audio/wav',
 };
 
-function origin(req) {
-  const proto = String(req.headers['x-forwarded-proto'] || 'http').split(',')[0].trim() === 'https' ? 'https' : 'http';
-  const hostHeader = String(req.headers['x-forwarded-host'] || req.headers.host || `localhost:${port}`).split(',')[0].trim();
-  return `${proto}://${/^[\w.:\[\]-]+$/.test(hostHeader) ? hostHeader : `localhost:${port}`}`;
-}
-
 const server = http.createServer(async (req, res) => {
   const urlPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
   let file = path.join(root, urlPath);
@@ -37,9 +32,7 @@ const server = http.createServer(async (req, res) => {
   }
   try {
     if ((await fs.stat(file)).isDirectory()) file = path.join(file, 'index.html');
-    let data = await fs.readFile(file);
-    // Vorschau-Tags (Open Graph) brauchen absolute Adressen: aus dem Aufruf übernehmen (Render setzt X-Forwarded-Proto)
-    if (path.extname(file) === '.html') data = data.toString().replaceAll('__ORIGIN__', origin(req));
+    const data = await fs.readFile(file);
     res.writeHead(200, {
       'Content-Type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
       'Cache-Control': 'no-store',
