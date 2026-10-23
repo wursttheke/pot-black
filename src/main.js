@@ -44,7 +44,9 @@ function newFrame() {
   st.aiBusy = false; st.aiToken++;
   st.aiSnookerHint = false;
   startPlacing();
-  aimAtPoint(0.03, balls[1].z);
+  // Anstoßrichtung parallel zur langen Bande (zur Kopfbande hin): trifft vom Anstoßpunkt die äußere Rote
+  st.aim = 0;
+  st.predDirty = true;
   toast(inputLocked() ? `${st.names[frame.current]} hat Anstoß` : `${st.names[frame.current]} hat Anstoß – Weiße im D platzieren`);
   maybeStartAi();
 }
