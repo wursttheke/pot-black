@@ -191,8 +191,9 @@ function presentOutcome(out, celebration) {
     return;
   }
   proceedTurn();
-  // Nach erfolgreichem Lochen: Blick auf die sinnvollste nächste Kugel schwenken
-  if (out.points > 0 && st.mode === 'aim' && !inputLocked()) {
+  // Nach erfolgreichem Lochen oder wenn der Spieler wechselt (z. B. nach dem Computer):
+  // Blick auf die sinnvollste nächste Kugel schwenken
+  if ((out.points > 0 || frame.current !== out.offender) && st.mode === 'aim' && !inputLocked()) {
     const hint = suggestNextShot();
     if (hint) msgs.push(hint);
   }
@@ -220,6 +221,7 @@ function applyDecision(putBack) {
   if (putBack) frame.putBack();
   hideOverlay();
   proceedTurn();
+  if (st.mode === 'aim' && !inputLocked()) suggestNextShot();
 }
 
 function requestNewFrame() {
