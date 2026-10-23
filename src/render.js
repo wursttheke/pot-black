@@ -14,7 +14,7 @@ const SKIRT_H = 0.1; // Zarge unter dem Rahmen (flach wie am echten Tisch)
 const FRAME_H = 0.11; // nach innen versetzter Unterrahmen darunter, trägt die Beine
 // Ballrinne an jeder Tasche: das Netz mündet in einen Messingring, von dort führt eine leicht schräge
 // Rinne aus drei Stangen weg, in der die gelochten Kugeln liegen bleiben
-const RING_Y = -0.17, RING_R = 0.038, RAIL_LEN = 0.38, RAIL_DROP = 0.03, RAIL_HALF = 0.024, ROD_R = 0.0035;
+const RING_Y = -0.19, RAIL_Y = RING_Y - 0.058, RING_R = 0.038, RAIL_LEN = 0.38, RAIL_DROP = 0.03, RAIL_HALF = 0.024, ROD_R = 0.0035;
 const RAIL_BALL_UP = Math.sqrt((R + ROD_R) ** 2 - RAIL_HALF ** 2); // Kugelmitte über den oberen Stangen
 const COLOUR_OF = Object.fromEntries(COLOURS.map(c => [c.name, c.color]));
 
@@ -625,7 +625,7 @@ export class View {
     // Acht Beine unter dem Unterrahmen: vier je Längsseite, von den Ecken nach innen gerückt
     // Verteilung wie am Original: äußere Beine bei etwa 11 %, innere bei etwa 37 % der Tischlänge;
     // seitlich so, dass die Ballrinnen außen frei vorbeilaufen
-    const legX = frameX - 0.06;
+    const legX = frameX - 0.07;
     for (const x of [-legX, legX]) for (const z of [-1.515, -0.49, 0.49, 1.515]) {
       const leg = new THREE.Mesh(legGeo, legMat);
       leg.position.set(x, FLOOR_Y, z);
@@ -650,41 +650,45 @@ export class View {
     const m = this.railMats;
     const dx = 0, dz = p.corner ? -Math.sign(p.hz) : 1;
     const lx = -dz, lz = dx; // quer zur Rinne
-    const at = (d, l, dy) => new THREE.Vector3(p.hx + dx * d + lx * l, RING_Y - RAIL_DROP * Math.max(0, d) / RAIL_LEN + dy, p.hz + dz * d + lz * l);
+    // Rinne hängt unter dem Ring: die Kugel fällt senkrecht durch den Ring und rollt darunter heraus
+    const at = (d, l, dy) => new THREE.Vector3(p.hx + dx * d + lx * l, RAIL_Y - RAIL_DROP * Math.max(0, d) / RAIL_LEN + dy, p.hz + dz * d + lz * l);
     const add = (mesh, castShadow = true) => { mesh.castShadow = castShadow; s.add(part(mesh, 'rail')); return mesh; };
-    const rod = (a, b, r = ROD_R, mat = m.rod) => {
-      const v = new THREE.Vector3().subVectors(b, a), len = v.length();
-      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 10), mat);
+    const orient = (mesh, a, b) => {
+      const v = new THREE.Vector3().subVectors(b, a);
       mesh.position.copy(a).addScaledVector(v, 0.5);
       mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.normalize());
       return add(mesh);
     };
+    const rod = (a, b, r = ROD_R, mat = m.rod) => orient(new THREE.Mesh(new THREE.CylinderGeometry(r, r, a.distanceTo(b), 10), mat), a, b);
     const ring = add(new THREE.Mesh(new THREE.TorusGeometry(RING_R, 0.0045, 10, 40), m.brass));
     ring.rotation.x = Math.PI / 2;
     ring.position.set(p.hx, RING_Y, p.hz);
-    const lowY = -0.022, start = Math.sqrt(RING_R * RING_R - RAIL_HALF * RAIL_HALF);
+    const lowY = -0.022, back = -0.035;
     for (const side of [-1, 1]) {
-      // Obere Stange vom Ring bis zum Ende, darunter eine kurze senkrechte Strebe mit Messinghülse
-      rod(at(start, side * RAIL_HALF, 0), at(RAIL_LEN, side * RAIL_HALF, 0));
-      rod(at(start, side * RAIL_HALF, 0), at(start, side * RAIL_HALF * 0.5, lowY));
-      rod(at(start, side * RAIL_HALF, -0.002), at(start, side * RAIL_HALF, -0.014), 0.0055, m.brass);
-      // Endkappen aus Messing
+      // Obere Stangen von hinter dem Ring bis zum Ende, mit Messingkappen an beiden Enden
+      rod(at(back, side * RAIL_HALF, 0), at(RAIL_LEN, side * RAIL_HALF, 0));
+      rod(at(back - 0.008, side * RAIL_HALF, 0), at(back + 0.004, side * RAIL_HALF, 0), 0.0045, m.brass);
       rod(at(RAIL_LEN - 0.004, side * RAIL_HALF, 0), at(RAIL_LEN + 0.008, side * RAIL_HALF, 0), 0.0045, m.brass);
+      // Messingbogen: hält die Rinne seitlich am Ring
+      const ringPt = new THREE.Vector3(p.hx + lx * side * RING_R, RING_Y, p.hz + lz * side * RING_R);
+      const railPt = at(0, side * RAIL_HALF, 0);
+      const c1 = new THREE.Vector3(p.hx + lx * side * RING_R * 1.3, RING_Y - 0.02, p.hz + lz * side * RING_R * 1.3);
+      const c2 = at(0, side * RAIL_HALF * 1.35, 0.022);
+      add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CubicBezierCurve3(ringPt, c1, c2, railPt), 16, 0.0035, 8), m.brass));
     }
-    // Untere Stange in der Mitte und Querstreben, die alles verbinden
-    rod(at(start, 0, lowY), at(RAIL_LEN, 0, lowY));
-    rod(at(start, -RAIL_HALF * 0.5, lowY), at(start, RAIL_HALF * 0.5, lowY));
-    rod(at(RAIL_LEN, -RAIL_HALF, 0), at(RAIL_LEN, RAIL_HALF, 0));
-    rod(at(RAIL_LEN, -RAIL_HALF, 0), at(RAIL_LEN, 0, lowY));
-    rod(at(RAIL_LEN, RAIL_HALF, 0), at(RAIL_LEN, 0, lowY));
-    // Lederriemen vom Bügel schräg nach oben unter den Rahmen
-    const top = at(RAIL_LEN - 0.07, 0, 0);
-    top.y = -SKIRT_H;
-    const bottom = at(RAIL_LEN - 0.005, 0, -0.01);
-    const v = new THREE.Vector3().subVectors(top, bottom);
-    const strap = add(new THREE.Mesh(new THREE.BoxGeometry(0.018, v.length(), 0.003), m.strap));
-    strap.position.copy(bottom).addScaledVector(v, 0.5);
-    strap.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.normalize());
+    // Untere Stange in der Mitte, Bügel an beiden Enden
+    rod(at(back, 0, lowY), at(RAIL_LEN, 0, lowY));
+    for (const d of [back, RAIL_LEN]) {
+      rod(at(d, -RAIL_HALF, 0), at(d, RAIL_HALF, 0));
+      rod(at(d, -RAIL_HALF, 0), at(d, 0, lowY));
+      rod(at(d, RAIL_HALF, 0), at(d, 0, lowY));
+    }
+    // Lederriemen senkrecht hinter dem Endbügel (außerhalb der Kugelbahn) hinauf unter den Tisch
+    const strapD = RAIL_LEN + 0.016;
+    rod(at(RAIL_LEN, 0, -0.012), at(strapD, 0, -0.012), 0.003, m.brass);
+    const bottom = at(strapD, 0, -0.02), top = bottom.clone();
+    top.y = -0.06;
+    orient(new THREE.Mesh(new THREE.BoxGeometry(0.018, top.y - bottom.y, 0.003), m.strap), bottom, top);
     this.rails.set(p, { dx, dz, at });
   }
 
@@ -750,7 +754,11 @@ export class View {
     for (const b of balls) {
       const m = this.ballMeshes.get(b.id);
       if (!m || b.onTable || !b.pocket || !this.rails?.has(b.pocket)) continue;
-      if (m.userData.potOrder == null) { m.userData.potOrder = this.potCounter = (this.potCounter || 0) + 1; m.userData.potT = 0; m.userData.railD = 0; }
+      if (m.userData.potOrder == null) {
+        m.userData.potOrder = this.potCounter = (this.potCounter || 0) + 1;
+        m.userData.potT = b.restInRail ? 99 : 0; // restInRail: liegt von Anfang an in der Rinne (Vorspann)
+        m.userData.railD = 0;
+      }
       if (!slots.has(b.pocket)) slots.set(b.pocket, []);
       slots.get(b.pocket).push(m);
     }
@@ -789,7 +797,7 @@ export class View {
         // Durchs Netz in den Ring fallen, dann die Rinne hinunter bis zum Liegeplatz rollen
         const t = m.userData.potT + dt;
         m.userData.potT = t;
-        const p = b.pocket, entry = this.railPoint(p, 0), FALL = 0.22;
+        const p = b.pocket, entry = this.railPoint(p, 0), FALL = 0.27;
         const target = RAIL_LEN - 0.012 - R - m.userData.slot * 2 * R * 1.005;
         if (target < 0) { m.visible = t < FALL; } // Rinne voll: Kugel verschwindet im Netz
         if (t < FALL || target < 0) {
@@ -798,7 +806,8 @@ export class View {
           m.position.z += (p.hz - m.position.z) * Math.min(1, dt * 14);
           m.position.y = R + (entry.y - R) * f * f;
         } else {
-          const t2 = t - FALL, d = Math.min(target, 0.25 * t2 + 0.9 * t2 * t2);
+          // Langsam anrollen und auf der leicht schrägen Rinne nur sacht beschleunigen
+          const t2 = t - FALL, d = Math.min(target, 0.1 * t2 + 0.22 * t2 * t2);
           const step = d - m.userData.railD;
           m.userData.railD = d;
           m.position.copy(this.railPoint(p, d));

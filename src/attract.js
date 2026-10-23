@@ -1,7 +1,7 @@
 // Vorspann im Startbildschirm: kurze Szenen mit echten Stößen, gefilmt aus wechselnden,
 // teils leicht schiefen Kamerapositionen. Zwischen den Szenen wird hart geschnitten.
 import { BALL_R as R, TABLE_L, TABLE_W, BAULK_Z, PHYS } from './constants.js';
-import { strike, step } from './physics.js';
+import { strike, step, POCKETS } from './physics.js';
 import { rackBalls } from './table.js';
 import { evaluatePot, refineAim, TARGETS } from './planner.js';
 
@@ -144,6 +144,27 @@ const SCENES = [
       const a = 2.25 + t * 0.06;
       return { pos: [cx + Math.sin(a) * 1.05, lerp(0.95, 0.75, t / 7), cz + Math.cos(a) * 1.05], look: [cx, 0, cz], roll: 0.12 };
     },
+  },
+  {
+    // Unter dem Tisch an der Mitteltasche: eine Rote fällt durchs Netz und rollt in die Ballrinne,
+    // in der schon eine Rote liegt
+    name: 'rail', dur: 6, shotAt: 1.0,
+    setup: () => {
+      const balls = rackBalls();
+      clearReds(balls, 1);
+      const red = balls.find(b => b.kind === 'red' && b.onTable);
+      Object.assign(red, { x: 0.62, z: 0.1 });
+      const pocket = target(1, 0);
+      const waiting = balls.find(b => b.kind === 'red' && !b.onTable);
+      Object.assign(waiting, { pocket: POCKETS.find(p => !p.corner && p.hx > 0), restInRail: true });
+      placeForPot(balls, red, pocket, 0.55, 8);
+      const shot = { power: 0.34, tipX: 0, tipY: 0 };
+      return { balls, shot: { ...shot, aim: potAim(balls, red, pocket, shot) } };
+    },
+    cam: (t) => ({
+      pos: [lerp(1.62, 1.56, t / 6), lerp(-0.17, -0.19, t / 6), lerp(0.62, 0.5, t / 6)],
+      look: [0.95, -0.27, lerp(0.17, 0.2, t / 6)], roll: 0.03,
+    }),
   },
   {
     // Pink in die Ecke mit Nachläufer, aus der Spielerperspektive mit leichter Schräglage
