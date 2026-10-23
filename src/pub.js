@@ -213,6 +213,20 @@ export function buildPub(scene, envMap) {
     cue.rotation.z = 0.02;
   }
 
+  // Alles, was an einer Wand hängt oder davor steht, der Wand zuordnen: Steht die Kamera hinter einer
+  // Wand (z. B. weite Seitenansicht im Vorspann, TV-Kamera im Hochformat), wird deren Ausstattung
+  // ausgeblendet – die Wandflächen selbst sind von hinten ohnehin unsichtbar, Rahmen und Leuchten nicht
+  const wallGroups = { px: new THREE.Group(), nx: new THREE.Group(), pz: new THREE.Group(), nz: new THREE.Group() };
+  for (const g of Object.values(wallGroups)) group.add(g);
+  wallGroups.nx.add(bottles);
+  for (const m of [...group.children]) {
+    if (!m.isMesh) continue;
+    const { x, z } = m.position;
+    const d = { px: RX - x, nx: x + RX, pz: RZ - z, nz: z + RZ };
+    const key = Object.keys(d).reduce((a, k) => (d[k] < d[a] ? k : a));
+    if (d[key] < 1.6) wallGroups[key].add(m);
+  }
+
   // Einblenden aus dem Schwarz (Intro): Farben und Leuchten skalieren, ohne Shader neu zu bauen
   const setFade = (e) => {
     group.visible = e > 0;
@@ -221,7 +235,15 @@ export function buildPub(scene, envMap) {
       if (emissive) m.emissive.copy(emissive).multiplyScalar(e);
     }
   };
-  // Pro Bild: Decke nur zeigen, solange die Kamera darunter ist
-  const update = camera => { ceilingGroup.visible = camera.position.y < CEIL - 0.25; };
+  // Pro Bild: Decke nur zeigen, solange die Kamera darunter ist,
+  // und Wandausstattung nur, solange die Kamera vor der jeweiligen Wand steht
+  const update = camera => {
+    const p = camera.position, m = 0.05;
+    ceilingGroup.visible = p.y < CEIL - 0.25 && Math.abs(p.x) < RX - m && Math.abs(p.z) < RZ - m;
+    wallGroups.px.visible = p.x < RX - m;
+    wallGroups.nx.visible = p.x > -RX + m;
+    wallGroups.pz.visible = p.z < RZ - m;
+    wallGroups.nz.visible = p.z > -RZ + m;
+  };
   return { group, setFade, update, floorMap: floorTexture() };
 }

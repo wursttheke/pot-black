@@ -177,9 +177,11 @@ export class Sfx {
   }
   // Kugel fällt in die Tasche; speed: Tempo beim Einlaufen in m/s
   pocket(speed = 1) {
-    const s = Math.min(1, speed / 1.6);
+    // Variante erst bei höherem Tempo wechseln (mittel ab ca. 1,1 m/s, hart ab ca. 2,1 m/s),
+    // die Lautstärke folgt weiter stufenlos dem Tempo
+    const level = Math.min(1, speed / 3.2), s = Math.min(1, speed / 1.6);
     if (!this.ready()) return;
-    if (!this.sample('pocket', s, 0.35 + 0.55 * s)) {
+    if (!this.sample('pocket', level, 0.35 + 0.55 * s)) {
       this.synth(250, 1, 0.6, 0.25);
       setTimeout(() => this.hit(900, 4, 0.25, 0.08), 140);
     }
