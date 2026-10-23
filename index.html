@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Pot Black – 3D Snooker</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -26,6 +26,8 @@
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0b0e; color: var(--fg); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
   /* Kein Markieren von Text und kein Kontextmenü beim langen Tippen (stört vor allem auf Mobilgeräten) */
   body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  /* Kein Doppeltipp-Zoom */
+  html, body, button { touch-action: manipulation; }
   input, textarea { -webkit-user-select: text; user-select: text; }
   #app canvas { display: block; touch-action: none; cursor: crosshair; }
   .hidden { display: none !important; }
@@ -95,6 +97,30 @@
   @keyframes pop { from { transform: translate(-50%, -50%) scale(0.4); } to { transform: translate(-50%, -50%) scale(1); } }
   @keyframes pulse { 0%, 100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.08); } }
   @keyframes rainbow { 0%, 100% { color: #ffd84a; } 25% { color: #ff6b8a; } 50% { color: #6bc4ff; } 75% { color: #8dff9a; } }
+  /* Stufe 4 (Maximum): Zähler bis 147, dann goldener Schriftzug mit Knall */
+  #celebrate.lvl4 { top: 30%; }
+  #celebrate.lvl4 .num { font-size: clamp(64px, 16vw, 170px); font-weight: 900; line-height: 1; color: #fff4c2;
+    font-variant-numeric: tabular-nums; text-shadow: 0 0 30px rgba(255,200,60,.8), 0 6px 30px rgba(0,0,0,.7); }
+  #celebrate.lvl4 h2, #celebrate.lvl4 p { opacity: 0; }
+  #celebrate.lvl4.counting .num { animation: throb .3s ease-in-out infinite; }
+  #celebrate.lvl4.slam .num { animation: slam .6s cubic-bezier(.2, 1.8, .4, 1) both; color: #ffd84a; }
+  #celebrate.lvl4.slam h2 { opacity: 1; font-size: clamp(44px, 10vw, 112px); letter-spacing: .06em; text-transform: uppercase;
+    background: linear-gradient(100deg, #fff4c2 0%, #ffd700 30%, #fff 45%, #ffb627 60%, #ffd700 80%, #fff4c2 100%);
+    background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: none; filter: drop-shadow(0 0 18px rgba(255,190,40,.85)) drop-shadow(0 6px 18px rgba(0,0,0,.7));
+    animation: slam .7s cubic-bezier(.2, 1.8, .4, 1) .08s both, shine 2.2s linear .8s infinite; }
+  #celebrate.lvl4.slam p { opacity: 1; animation: reveal .5s ease-out .6s both; }
+  #celebrate.lvl4.show.slam { animation: pulse 1.6s ease-in-out 1s infinite; }
+  @keyframes throb { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
+  @keyframes slam { from { transform: scale(3); opacity: 0; } 60% { opacity: 1; } to { transform: scale(1); opacity: 1; } }
+  @keyframes shine { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+  #fxFlash { position: fixed; inset: 0; z-index: 62; pointer-events: none; background: #fff8e0; opacity: 0; }
+  #fxFlash.on { animation: flash .9s ease-out; }
+  @keyframes flash { from { opacity: var(--flash, .9); } to { opacity: 0; } }
+  #app.shake { animation: shake .6s cubic-bezier(.36, .07, .19, .97); }
+  @keyframes shake { 10%, 90% { transform: translate(-3px, 2px); } 20%, 80% { transform: translate(6px, -4px); }
+    30%, 50%, 70% { transform: translate(-10px, 6px); } 40%, 60% { transform: translate(10px, -6px); } }
+  @media (prefers-reduced-motion: reduce) { #app.shake { animation: none; } #fxFlash.on { animation-duration: .3s; } }
 
   #help { position: fixed; top: 12px; left: 12px; padding: 12px 14px; font-size: 12.5px; max-width: min(300px, calc(100vw - 32px)); z-index: 5; }
   #help h3 { margin: 0; font-size: 13px; }
@@ -107,13 +133,15 @@
   #help .legend span { display: inline-block; width: 18px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 4px; }
 
   /* Menü und Dialoge */
-  .modal { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.45); padding: 16px; }
-  .modal .panel { padding: 22px 26px; max-width: 520px; width: 100%; }
+  /* Passt ein Dialog nicht auf den Bildschirm, lässt er sich scrollen (margin: auto zentriert nur, solange Platz ist) */
+  .modal { position: fixed; inset: 0; display: flex; background: rgba(0,0,0,0.45); padding: 16px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .modal .panel { padding: 22px 26px; max-width: 520px; width: 100%; margin: auto; }
   .modal h1 { margin: 0 0 4px; font-size: 30px; letter-spacing: .02em; }
   .modal h2 { margin: 0 0 10px; }
   .modal p { margin: 8px 0; }
   .modal .fb { color: var(--accent); font-weight: 600; }
   .modal input { font: inherit; color: var(--fg); background: #1b1e24; border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; width: 100%; }
+  @media (pointer: coarse) { .modal input { font-size: 16px; } }
   .row { display: flex; gap: 10px; margin: 12px 0; }
   .seg { display: flex; gap: 6px; }
   .seg button { flex: 1; padding: 9px 10px; }
@@ -165,6 +193,28 @@
   .btns button:first-child, #start { background: #8a5a12; border-color: #c38a2a; font-weight: 600; }
   .sub { color: var(--muted); }
 
+  /* Kleine Bildschirme: Startbildschirm kompakt, Modi als flache Zeilen */
+  @media (max-width: 520px), (max-height: 760px) {
+    .modal { padding: 10px; }
+    .panel.start { padding: 18px 18px 14px; border-radius: 16px; }
+    .brand { gap: 12px; margin-bottom: 14px; }
+    .brand h1 { font-size: 30px; }
+    .brand .tagline { font-size: 10px; letter-spacing: .12em; }
+    .brand .sub { font-size: 12px; margin-top: 4px; }
+    .logo { width: 42px; height: 42px; }
+    .modes { gap: 6px; margin-bottom: 12px; }
+    .mode { display: grid; grid-template-columns: 26px 1fr; grid-template-rows: auto auto; column-gap: 8px; row-gap: 0;
+      align-items: center; padding: 8px 12px; border-radius: 10px; }
+    .mode-icon { grid-row: 1 / 3; margin: 0; font-size: 11px; letter-spacing: 1px; text-align: center; }
+    .mode-title { font-size: 15px; }
+    .mode-desc { font-size: 11.5px; }
+    .field { gap: 4px; margin-bottom: 10px; }
+    .seg button { padding: 7px 8px; }
+    .lobby { max-height: 140px; }
+    #start { padding: 11px; font-size: 16px; }
+    .hint { margin-top: 10px !important; font-size: 11px; }
+  }
+  @media (max-height: 640px) { .brand .sub, #menu .hint { display: none; } }
   @media (max-width: 760px) {
     .player { min-width: 0; padding: 6px 10px; } .player .score { font-size: 20px; }
     #mid { display: none; } #spin { width: 96px; height: 96px; } #power { min-height: 90px; width: 28px; }

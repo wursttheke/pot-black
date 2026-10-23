@@ -143,7 +143,7 @@ function endOfShot() {
 
 // Ergebnis eines Stoßes anzeigen und den Spielablauf fortsetzen (lokal wie online)
 function presentOutcome(out, celebration) {
-  if (celebration) playCelebration(celebration.level, celebration.title, celebration.subtitle);
+  if (celebration) playCelebration(celebration.level, celebration.title, celebration.subtitle, celebration.points);
   const celebrated = celebration ? celebration.level : 0;
   const msgs = [...out.messages];
   if (out.frameOver) {
@@ -157,7 +157,7 @@ function presentOutcome(out, celebration) {
        <p>Höchstes Break: ${frame.names[0]} ${frame.highBreak[0]} · ${frame.names[1]} ${frame.highBreak[1]}</p>
        <p>Frames: ${st.frames[0]} : ${st.frames[1]}</p>
        ${spectator ? '<p class="sub">Warte auf das nächste Frame…</p>' : ''}`,
-      spectator ? [['Spiel verlassen', confirmLeave]] : [['Nächstes Frame', requestNewFrame], ['Spiel verlassen', confirmLeave]]), celebrated ? 3500 : 0);
+      spectator ? [['Spiel verlassen', confirmLeave]] : [['Nächstes Frame', requestNewFrame], ['Spiel verlassen', confirmLeave]]), celebrated >= 4 ? 11000 : celebrated ? 3500 : 0);
     return;
   }
   if (out.foul) {
@@ -228,8 +228,8 @@ function requestNewFrame() {
   if (st.online) sendState();
 }
 
-function playCelebration(level, title, subtitle) {
-  fx.play(level, title, subtitle);
+function playCelebration(level, title, subtitle, points) {
+  fx.play(level, title, subtitle, points);
 }
 
 function proceedTurn() {
@@ -837,6 +837,11 @@ function updateCamera(dt) {
 
 // ---------------------------------------------------------------- Eingabe
 
+// Kein Zoomen im Spiel: Safari ignoriert user-scalable=no, daher Pinch- und Strg+Mausrad-Zoom hier abfangen
+for (const type of ['gesturestart', 'gesturechange']) document.addEventListener(type, e => e.preventDefault());
+document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+
 let drag = null;
 canvas.addEventListener('pointerdown', e => {
   sfx.unlock();
@@ -876,7 +881,7 @@ canvas.addEventListener('dblclick', e => {
 });
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
-  if (inputLocked()) return;
+  if (inputLocked() || e.ctrlKey) return; // Strg+Mausrad / Trackpad-Pinch: kein Zoom und keine Stärke
   setPower(st.power + (e.deltaY < 0 ? 1 : -1) * (e.shiftKey ? 0.05 : 0.01));
 }, { passive: false });
 
