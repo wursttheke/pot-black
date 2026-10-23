@@ -10,6 +10,7 @@ import { planNextShot } from './planner.js';
 import { Celebration, celebrationFor } from './celebrate.js';
 import { AI_LEVELS, thinkShot, thinkBreak, isBreakOff, withNoise, choosePlacement, snookersNeeded } from './ai.js';
 import { Attract } from './attract.js';
+import { Intro } from './intro.js';
 import { Net } from './net.js';
 
 const $ = id => document.getElementById(id);
@@ -1174,11 +1175,16 @@ let last = performance.now();
 let drawAt = 0;
 function loop(now) {
   requestAnimationFrame(loop);
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
   last = now;
   sfx.frame();
   processNet();
   sendAim(now);
+  if (intro.active) {
+    intro.update(dt);
+    if (now - drawAt >= 1000 / 60 - 2 && view.render()) drawAt = now;
+    return;
+  }
 
   if (st.mode === 'shooting') {
     st.shotT += dt;
@@ -1264,5 +1270,27 @@ requestAnimationFrame(loop);
 // Hintergrund im Menü: Vorspann mit Szenen typischer Stöße
 const attract = new Attract();
 
+// Intro beim Laden der Seite: Holodeck, danach blendet der Startbildschirm ein
+const intro = new Intro(view);
+function startIntro() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) { $('menu').classList.remove('intro-wait'); return; }
+  balls = attract.balls;
+  cue = balls[0];
+  attract.changed = false;
+  $('skipIntro').classList.remove('hidden');
+  intro.start(balls, () => {
+    $('skipIntro').classList.add('hidden');
+    $('menu').classList.remove('intro-wait');
+  });
+}
+$('skipIntro').addEventListener('click', () => intro.finish());
+addEventListener('keydown', e => {
+  if (!intro.active || !['Escape', 'Enter', ' '].includes(e.key)) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  intro.finish();
+}, true);
+startIntro();
+
 // Debug-Zugriff in der Browser-Konsole
-window.snooker = { st, view, attract, shoot, get balls() { return balls; }, get frame() { return frame; } };
+window.snooker = { st, view, attract, intro, shoot, get balls() { return balls; }, get frame() { return frame; } };

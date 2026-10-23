@@ -347,6 +347,12 @@ function woodTexture() {
   return t;
 }
 
+// Bauteil des Tisches kennzeichnen (das Intro zeichnet die Teile nacheinander nach)
+function part(mesh, name) {
+  mesh.userData.part = name;
+  return mesh;
+}
+
 export class View {
   constructor(container) {
     // Logarithmischer Tiefenpuffer: dünne Schichten (Tuch, Markierungen, Schatten) flackern auch aus der Draufsicht nicht
@@ -394,7 +400,8 @@ export class View {
 
   buildLights() {
     const s = this.scene;
-    s.add(new THREE.HemisphereLight(0xb8c4d8, 0x201810, 0.35));
+    const hemi = new THREE.HemisphereLight(0xb8c4d8, 0x201810, 0.35);
+    s.add(hemi);
     const key = new THREE.DirectionalLight(0xfff4e0, 1.8);
     key.position.set(0.4, 5, 0.8);
     key.castShadow = true;
@@ -405,6 +412,7 @@ export class View {
     key.shadow.normalBias = 0.01;
     key.shadow.radius = 4;
     s.add(key);
+    this.lights = [hemi, key];
     // Drei Tischlampen (sichtbare Schirme + Punktlichter für Glanzlichter)
     const shadeMat = new THREE.MeshStandardMaterial({ color: 0x1b2a22, roughness: 0.6, metalness: 0.3 });
     const glowMat = new THREE.MeshBasicMaterial({ color: 0xfff6e0 });
@@ -416,6 +424,7 @@ export class View {
       const p = new THREE.PointLight(0xfff0d8, 2.2, 4, 1.6);
       p.position.set(0, 1.05, z);
       s.add(p);
+      this.lights.push(p);
       const shade = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.12, 0.55), shadeMat);
       shade.position.set(0, 1.18, z);
       this.lamps.add(shade);
@@ -433,6 +442,7 @@ export class View {
     floor.position.y = -0.86;
     floor.receiveShadow = true;
     this.scene.add(floor);
+    this.floor = floor;
   }
 
   buildTable() {
@@ -450,26 +460,26 @@ export class View {
     const cloth = new THREE.Mesh(new THREE.ShapeGeometry(bedShape()), clothMat);
     cloth.rotation.x = -Math.PI / 2;
     cloth.receiveShadow = true;
-    s.add(cloth);
+    s.add(part(cloth, 'cloth'));
     // Schiefer mit tuchbezogenen Lochkanten (Taschenschlund)
     const slate = new THREE.Mesh(new THREE.ExtrudeGeometry(bedShape(), { depth: 0.042, bevelEnabled: false }),
       new THREE.MeshStandardMaterial({ color: 0x0f3a1c, roughness: 0.95 }));
     slate.rotation.x = -Math.PI / 2;
     slate.position.y = -0.045; // Oberseite 3 mm unter dem Tuch
-    s.add(slate);
+    s.add(part(slate, 'slate'));
 
     // Markierungen: Baulk-Linie, D, Spots
     const lineMat = new THREE.MeshBasicMaterial({ color: 0xe8f0e8, transparent: true, opacity: 0.75 });
     const baulk = new THREE.Mesh(new THREE.PlaneGeometry(TABLE_W, 0.002), lineMat);
     baulk.rotation.x = -Math.PI / 2; baulk.position.set(0, 0.0004, BAULK_Z);
-    s.add(baulk);
+    s.add(part(baulk, 'marking'));
     const d = new THREE.Mesh(new THREE.RingGeometry(D_RADIUS - 0.001, D_RADIUS + 0.001, 96, 1, Math.PI, Math.PI), lineMat);
     d.rotation.x = -Math.PI / 2; d.position.set(0, 0.0004, BAULK_Z);
-    s.add(d);
+    s.add(part(d, 'marking'));
     for (const c of COLOURS) {
       const sp = new THREE.Mesh(new THREE.CircleGeometry(0.003, 12), lineMat);
       sp.rotation.x = -Math.PI / 2; sp.position.set(c.spot[0], 0.0004, c.spot[1]);
-      s.add(sp);
+      s.add(part(sp, 'marking'));
     }
 
     // Banden: Gummiprofil mit überhängender Nase, entlang der Nasenlinie inkl. Rundungen extrudiert
@@ -477,7 +487,7 @@ export class View {
     for (const path of CUSHION_PATHS) {
       const m = new THREE.Mesh(sweepCushion(path), cushMat);
       m.castShadow = true; m.receiveShadow = true;
-      s.add(m);
+      s.add(part(m, 'cushion'));
     }
 
     // Mahagoni-Rahmen mit gerundeten Kanten
@@ -511,7 +521,7 @@ export class View {
       geo.translate(0, bevel, 0);
       const m = new THREE.Mesh(geo, woodMat);
       m.castShadow = true; m.receiveShadow = true;
-      s.add(m);
+      s.add(part(m, 'wood'));
     };
     const ow = o + RAIL_W;
     // Holzenden an den Ecken: Innenkante endet am Lochrand (E), Außenkante am Lederende
@@ -538,7 +548,7 @@ export class View {
         geo.rotateX(-Math.PI / 2);
         const m = new THREE.Mesh(geo, woodMat);
         m.castShadow = true; m.receiveShadow = true;
-        s.add(m);
+        s.add(part(m, 'wood'));
       }
     }
     // Zarge (Seitenblende) unter dem Rahmen: umlaufender Ring, an den Ecken mit derselben
@@ -562,7 +572,7 @@ export class View {
     const skirt = new THREE.Mesh(skirtGeo, skirtMat);
     skirt.position.y = -0.002;
     skirt.castShadow = true; skirt.receiveShadow = true;
-    s.add(skirt);
+    s.add(part(skirt, 'skirt'));
 
     // Taschen: cremefarbene Lederkappen und Netze
     const leatherMat = new THREE.MeshPhysicalMaterial({ color: 0xc98a4c, roughness: 0.45, clearcoat: 0.6, clearcoatRoughness: 0.25, sheen: 0.4, sheenColor: 0xffd9a8, envMap: env, envMapIntensity: 0.6 });
@@ -571,20 +581,20 @@ export class View {
     for (const p of POCKETS) {
       const leather = new THREE.Mesh(leatherCap(p), leatherMat);
       leather.castShadow = true; leather.receiveShadow = true;
-      s.add(leather);
+      s.add(part(leather, 'leather'));
       // Lochwand unterhalb des Tuchs, darunter das Netz
       const lip = [[p.hr + 0.009, 0.0003], [p.hr + 0.005, -0.0012], [p.hr + 0.002, -0.004], [p.hr + 0.0005, -0.009], [p.hr, -0.016], [p.hr, -0.045]]
         .map(([r, y]) => new THREE.Vector2(r, y));
       const throat = new THREE.Mesh(new THREE.LatheGeometry(lip, 48), throatMat);
       throat.position.set(p.hx, 0, p.hz);
       throat.receiveShadow = true;
-      s.add(throat);
+      s.add(part(throat, 'throat'));
       const net = new THREE.Mesh(new THREE.CylinderGeometry(p.hr * 0.97, p.hr * 0.45, 0.2, 24, 6, true), netMat);
       net.position.set(p.hx, -0.02 - 0.1, p.hz);
-      s.add(net);
+      s.add(part(net, 'net'));
       const netBottom = new THREE.Mesh(new THREE.CircleGeometry(p.hr * 0.45, 16), netMat);
       netBottom.rotation.x = -Math.PI / 2; netBottom.position.set(p.hx, -0.23, p.hz);
-      s.add(netBottom);
+      s.add(part(netBottom, 'net'));
     }
 
     // Gedrechselte Beine
@@ -598,7 +608,7 @@ export class View {
       const leg = new THREE.Mesh(legGeo, legMat);
       leg.position.set(x, -0.86, z);
       leg.castShadow = true;
-      s.add(leg);
+      s.add(part(leg, 'leg'));
     }
   }
 
