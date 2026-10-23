@@ -9,6 +9,13 @@ import { BALL_R as R, TABLE_L, TABLE_W, BAULK_Z, D_RADIUS, COLOURS, RED_COLOR, M
 import { CUSHION_PATHS, POCKETS } from './physics.js';
 
 const HW = TABLE_W / 2, HL = TABLE_L / 2;
+const FLOOR_Y = -0.86;
+const SKIRT_H = 0.1; // Zarge unter dem Rahmen (flach wie am echten Tisch)
+const FRAME_H = 0.11; // nach innen versetzter Unterrahmen darunter, trägt die Beine
+// Ballrinne an jeder Tasche: das Netz mündet in einen Messingring, von dort führt eine leicht schräge
+// Rinne aus drei Stangen weg, in der die gelochten Kugeln liegen bleiben
+const RING_Y = -0.17, RING_R = 0.038, RAIL_LEN = 0.38, RAIL_DROP = 0.03, RAIL_HALF = 0.024, ROD_R = 0.0035;
+const RAIL_BALL_UP = Math.sqrt((R + ROD_R) ** 2 - RAIL_HALF ** 2); // Kugelmitte über den oberen Stangen
 const COLOUR_OF = Object.fromEntries(COLOURS.map(c => [c.name, c.color]));
 
 function clothTexture() {
@@ -555,7 +562,7 @@ export class View {
     // Zarge (Seitenblende) unter dem Rahmen: umlaufender Ring, an den Ecken mit derselben
     // Rundung wie die Lederkappen (Tischecke endet rund, nichts ragt darüber hinaus)
     const skirtMat = new THREE.MeshPhysicalMaterial({ map: wtex, color: 0x8a3a2c, roughness: 0.4, clearcoat: 0.6, envMap: env, envMapIntensity: 0.5 });
-    const skirtH = 0.25, sw = 0.05, inset = 0.01;
+    const skirtH = SKIRT_H, sw = 0.05, inset = 0.01;
     const cornerR = CORNER.ro; // Radius der Leder-Außenkante (Mittelpunkt = Ecktaschenloch)
     const rounded = (path, hw, hl, r) => {
       path.moveTo(-hw + r, -hl);
@@ -590,27 +597,101 @@ export class View {
       throat.position.set(p.hx, 0, p.hz);
       throat.receiveShadow = true;
       s.add(part(throat, 'throat'));
-      const net = new THREE.Mesh(new THREE.CylinderGeometry(p.hr * 0.97, p.hr * 0.45, 0.2, 24, 6, true), netMat);
-      net.position.set(p.hx, -0.02 - 0.1, p.hz);
+      const netLen = -0.02 - RING_Y;
+      const net = new THREE.Mesh(new THREE.CylinderGeometry(p.hr * 0.97, RING_R * 0.96, netLen, 24, 6, true), netMat);
+      net.position.set(p.hx, -0.02 - netLen / 2, p.hz);
       s.add(part(net, 'net'));
-      const netBottom = new THREE.Mesh(new THREE.CircleGeometry(p.hr * 0.45, 16), netMat);
-      netBottom.rotation.x = -Math.PI / 2; netBottom.position.set(p.hx, -0.23, p.hz);
-      s.add(part(netBottom, 'net'));
+      this.buildRail(p);
     }
 
+    // Nach innen versetzter Unterrahmen unter der Zarge, an dem die Beine sitzen (die Ballrinnen
+    // laufen außen daran vorbei)
+    const frameX = HW, frameZ = HL - 0.03, frameT = 0.12;
+    const frameShape = rounded(new THREE.Shape(), frameX, frameZ, 0.05);
+    frameShape.holes.push(rounded(new THREE.Path(), frameX - frameT, frameZ - frameT, 0.02));
+    const frameGeo = new THREE.ExtrudeGeometry(frameShape, { depth: FRAME_H, bevelEnabled: false, curveSegments: 12 });
+    frameGeo.rotateX(Math.PI / 2);
+    const underFrame = new THREE.Mesh(frameGeo, skirtMat);
+    underFrame.position.y = -SKIRT_H;
+    underFrame.castShadow = true; underFrame.receiveShadow = true;
+    s.add(part(underFrame, 'skirt'));
+
     // Gedrechselte Beine
-    const legPts = [[0, 0], [0.07, 0], [0.075, 0.03], [0.06, 0.06], [0.085, 0.16], [0.095, 0.3], [0.08, 0.42], [0.06, 0.47], [0.07, 0.5], [0.07, 0.55], [0.085, 0.58], [0.085, 0.62], [0, 0.62]]
+    const legPts = [[0, 0], [0.07, 0], [0.075, 0.03], [0.06, 0.06], [0.085, 0.16], [0.095, 0.3], [0.08, 0.42], [0.06, 0.47], [0.07, 0.5], [0.066, 0.55], [0.058, 0.58], [0.058, 0.62], [0, 0.62]]
       .map(([r, y]) => new THREE.Vector2(r, y));
-    const legGeo = new THREE.LatheGeometry(legPts, 24);
+    // Beine reichen vom Boden bis unter den Unterrahmen
+    const legGeo = new THREE.LatheGeometry(legPts, 24).scale(1, (-SKIRT_H - FRAME_H - FLOOR_Y) / 0.62, 1);
     const legMat = new THREE.MeshPhysicalMaterial({ color: 0x3a1410, roughness: 0.35, clearcoat: 0.8, envMap: env, envMapIntensity: 0.5 });
-    // Acht Beine: vier je Längsseite, gleichmäßig verteilt (die Mitteltaschen liegen dazwischen)
-    const legEnd = HL - 0.12;
-    for (const x of [-HW - 0.05, HW + 0.05]) for (const z of [-legEnd, -legEnd / 3, legEnd / 3, legEnd]) {
+    // Acht Beine unter dem Unterrahmen: vier je Längsseite, von den Ecken nach innen gerückt
+    // Verteilung wie am Original: äußere Beine bei etwa 11 %, innere bei etwa 37 % der Tischlänge;
+    // seitlich so, dass die Ballrinnen außen frei vorbeilaufen
+    const legX = frameX - 0.06;
+    for (const x of [-legX, legX]) for (const z of [-1.515, -0.49, 0.49, 1.515]) {
       const leg = new THREE.Mesh(legGeo, legMat);
-      leg.position.set(x, -0.86, z);
+      leg.position.set(x, FLOOR_Y, z);
       leg.castShadow = true;
       s.add(part(leg, 'leg'));
     }
+  }
+
+  // Ballrinne einer Tasche: Messingring unter dem Netz, drei schwarze Stangen (zwei oben, eine unten)
+  // mit Messingbeschlägen, am Ende ein Bügel mit Lederriemen zum Rahmen. Alle Rinnen laufen entlang der
+  // langen Seite: von den Ecktaschen zur Tischmitte hin, von den Mitteltaschen Richtung Baulk.
+  buildRail(p) {
+    const s = this.scene;
+    if (!this.railMats) {
+      this.railMats = {
+        brass: new THREE.MeshStandardMaterial({ color: 0xc9a13b, metalness: 1, roughness: 0.28, envMap: this.envMap }),
+        rod: new THREE.MeshStandardMaterial({ color: 0x141414, metalness: 0.6, roughness: 0.35, envMap: this.envMap, envMapIntensity: 0.6 }),
+        strap: new THREE.MeshStandardMaterial({ color: 0x8a5532, roughness: 0.65 }),
+      };
+      this.rails = new Map();
+    }
+    const m = this.railMats;
+    const dx = 0, dz = p.corner ? -Math.sign(p.hz) : 1;
+    const lx = -dz, lz = dx; // quer zur Rinne
+    const at = (d, l, dy) => new THREE.Vector3(p.hx + dx * d + lx * l, RING_Y - RAIL_DROP * Math.max(0, d) / RAIL_LEN + dy, p.hz + dz * d + lz * l);
+    const add = (mesh, castShadow = true) => { mesh.castShadow = castShadow; s.add(part(mesh, 'rail')); return mesh; };
+    const rod = (a, b, r = ROD_R, mat = m.rod) => {
+      const v = new THREE.Vector3().subVectors(b, a), len = v.length();
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 10), mat);
+      mesh.position.copy(a).addScaledVector(v, 0.5);
+      mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.normalize());
+      return add(mesh);
+    };
+    const ring = add(new THREE.Mesh(new THREE.TorusGeometry(RING_R, 0.0045, 10, 40), m.brass));
+    ring.rotation.x = Math.PI / 2;
+    ring.position.set(p.hx, RING_Y, p.hz);
+    const lowY = -0.022, start = Math.sqrt(RING_R * RING_R - RAIL_HALF * RAIL_HALF);
+    for (const side of [-1, 1]) {
+      // Obere Stange vom Ring bis zum Ende, darunter eine kurze senkrechte Strebe mit Messinghülse
+      rod(at(start, side * RAIL_HALF, 0), at(RAIL_LEN, side * RAIL_HALF, 0));
+      rod(at(start, side * RAIL_HALF, 0), at(start, side * RAIL_HALF * 0.5, lowY));
+      rod(at(start, side * RAIL_HALF, -0.002), at(start, side * RAIL_HALF, -0.014), 0.0055, m.brass);
+      // Endkappen aus Messing
+      rod(at(RAIL_LEN - 0.004, side * RAIL_HALF, 0), at(RAIL_LEN + 0.008, side * RAIL_HALF, 0), 0.0045, m.brass);
+    }
+    // Untere Stange in der Mitte und Querstreben, die alles verbinden
+    rod(at(start, 0, lowY), at(RAIL_LEN, 0, lowY));
+    rod(at(start, -RAIL_HALF * 0.5, lowY), at(start, RAIL_HALF * 0.5, lowY));
+    rod(at(RAIL_LEN, -RAIL_HALF, 0), at(RAIL_LEN, RAIL_HALF, 0));
+    rod(at(RAIL_LEN, -RAIL_HALF, 0), at(RAIL_LEN, 0, lowY));
+    rod(at(RAIL_LEN, RAIL_HALF, 0), at(RAIL_LEN, 0, lowY));
+    // Lederriemen vom Bügel schräg nach oben unter den Rahmen
+    const top = at(RAIL_LEN - 0.07, 0, 0);
+    top.y = -SKIRT_H;
+    const bottom = at(RAIL_LEN - 0.005, 0, -0.01);
+    const v = new THREE.Vector3().subVectors(top, bottom);
+    const strap = add(new THREE.Mesh(new THREE.BoxGeometry(0.018, v.length(), 0.003), m.strap));
+    strap.position.copy(bottom).addScaledVector(v, 0.5);
+    strap.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), v.normalize());
+    this.rails.set(p, { dx, dz, at });
+  }
+
+  // Liegeplatz einer gelochten Kugel in der Rinne: Abstand d vom Ringmittelpunkt entlang der Rinne
+  railPoint(p, d) {
+    const r = this.rails.get(p), q = r.at(d, 0, RAIL_BALL_UP);
+    return q;
   }
 
   ballMaterial(color) {
@@ -663,6 +744,17 @@ export class View {
 
   // Positionen übernehmen und Rotation mit Winkelgeschwindigkeit integrieren
   syncBalls(balls, dt) {
+    // Gelochte Kugeln je Tasche in der Reihenfolge, in der sie gefallen sind: die erste rollt bis ans
+    // Ende der Rinne, jede weitere legt sich dahinter
+    const slots = new Map();
+    for (const b of balls) {
+      const m = this.ballMeshes.get(b.id);
+      if (!m || b.onTable || !b.pocket || !this.rails?.has(b.pocket)) continue;
+      if (m.userData.potOrder == null) { m.userData.potOrder = this.potCounter = (this.potCounter || 0) + 1; m.userData.potT = 0; m.userData.railD = 0; }
+      if (!slots.has(b.pocket)) slots.set(b.pocket, []);
+      slots.get(b.pocket).push(m);
+    }
+    for (const list of slots.values()) list.sort((a, b) => a.userData.potOrder - b.userData.potOrder).forEach((m, k) => { m.userData.slot = k; });
     for (const b of balls) {
       const m = this.ballMeshes.get(b.id);
       if (!m) continue;
@@ -686,14 +778,40 @@ export class View {
         m.visible = true;
         m.position.set(b.x, R, b.z);
         m.userData.potT = 0;
+        m.userData.potOrder = null;
         const w = Math.hypot(b.wx, b.wy, b.wz);
         if (w > 0 && dt > 0) {
           this.tmpV.set(b.wx / w, b.wy / w, b.wz / w);
           this.tmpQ.setFromAxisAngle(this.tmpV, w * dt);
           m.quaternion.premultiply(this.tmpQ);
         }
+      } else if (b.pocket && this.rails?.has(b.pocket)) {
+        // Durchs Netz in den Ring fallen, dann die Rinne hinunter bis zum Liegeplatz rollen
+        const t = m.userData.potT + dt;
+        m.userData.potT = t;
+        const p = b.pocket, entry = this.railPoint(p, 0), FALL = 0.22;
+        const target = RAIL_LEN - 0.012 - R - m.userData.slot * 2 * R * 1.005;
+        if (target < 0) { m.visible = t < FALL; } // Rinne voll: Kugel verschwindet im Netz
+        if (t < FALL || target < 0) {
+          const f = Math.min(1, t / FALL);
+          m.position.x += (p.hx - m.position.x) * Math.min(1, dt * 14);
+          m.position.z += (p.hz - m.position.z) * Math.min(1, dt * 14);
+          m.position.y = R + (entry.y - R) * f * f;
+        } else {
+          const t2 = t - FALL, d = Math.min(target, 0.25 * t2 + 0.9 * t2 * t2);
+          const step = d - m.userData.railD;
+          m.userData.railD = d;
+          m.position.copy(this.railPoint(p, d));
+          if (step > 0) {
+            const r = this.rails.get(p);
+            this.tmpV.set(r.dz, 0, -r.dx);
+            this.tmpQ.setFromAxisAngle(this.tmpV, step / R);
+            m.quaternion.premultiply(this.tmpQ);
+          }
+          m.visible = true;
+        }
       } else if (b.pocket && m.visible) {
-        // Fallanimation in die Tasche
+        // Fallanimation in die Tasche (ohne Rinne)
         const t = (m.userData.potT || 0) + dt;
         m.userData.potT = t;
         const p = b.pocket;

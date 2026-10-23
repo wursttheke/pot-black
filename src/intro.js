@@ -47,7 +47,7 @@ export const INTRO_DURATION = SHOTS[SHOTS.length - 1].to;
 // Laser-Phasen: welche Bauteile wann gezeichnet werden und in welcher Reihenfolge der Strahl wandert
 const TRACES = [
   { parts: ['leg', 'skirt', 'slate'], from: 2.2, to: 7.0, order: 'height', emitter: [-2.6, 2.9, 2.2] },
-  { parts: ['wood', 'leather', 'cushion', 'throat', 'net'], from: 6.6, to: 11.4, order: 'angle', emitter: [2.4, 2.9, 3.0] },
+  { parts: ['wood', 'leather', 'cushion', 'throat', 'net', 'rail'], from: 6.6, to: 11.4, order: 'angle', emitter: [2.4, 2.9, 3.0] },
   { parts: ['cloth', 'marking'], from: 11.3, to: 13.6, order: 'z', emitter: [0, 3.0, 3.4] },
 ];
 const BALLS_FROM = 13.8, BALLS_TO = 15.6, BALLS_EMITTER = [1.8, 2.8, -2.6];
