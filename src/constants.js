@@ -30,9 +30,9 @@ export const RED_COLOR = 0xb00d18;
 
 export const PHYS = {
   g: 9.81,
-  muSlide: 0.25,     // Gleitreibung Kugel/Tuch (Übergang Gleiten -> Rollen)
+  muSlide: 0.2875,   // Gleitreibung Kugel/Tuch (Übergang Gleiten -> Rollen)
   muRoll: 0.016,     // Rollwiderstand
-  spinDecel: 11,     // Abbau Seiteneffet durch Bohrreibung (rad/s²)
+  spinDecel: 12.65,  // Abbau Seiteneffet durch Bohrreibung (rad/s²)
   eBall: 0.95,       // Stoßzahl Kugel/Kugel
   muBall: 0.06,      // Reibung Kugel/Kugel (Throw, Effetübertragung)
   muCushion: 0.12,   // Reibung Kugel/Bande (wie stark der Effet an der Bande greift)

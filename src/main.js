@@ -8,7 +8,7 @@ import { rackBalls, respot, freeSpotInD, isSnookered, minTipY, cueElevation } fr
 import { Frame, ballLabel } from './rules.js';
 import { planNextShot } from './planner.js';
 import { Celebration, celebrationFor } from './celebrate.js';
-import { AI_LEVELS, thinkShot, withNoise, choosePlacement, snookersNeeded } from './ai.js';
+import { AI_LEVELS, thinkShot, thinkBreak, isBreakOff, withNoise, choosePlacement, snookersNeeded } from './ai.js';
 import { Attract } from './attract.js';
 import { Net } from './net.js';
 
@@ -282,19 +282,28 @@ function runAi(token) {
     st.aiSnookerHint = true;
     toast(`${frame.names[st.aiPlayer]} braucht einen Snooker und spielt auf Sicherheit`);
   }
-  if (st.mode === 'place') {
+  // Anstoß: eigener Plan mit Position der Weißen im D; sonst erst platzieren, dann nachdenken
+  const breakOff = st.mode === 'place' && isBreakOff(balls, frame);
+  if (st.mode === 'place' && !breakOff) {
     const [x, z] = choosePlacement(balls, frame, st.aiLevel);
     Object.assign(cue, { x, z });
     confirmPlacement();
   }
   // Nachdenken in kleinen Häppchen, damit Darstellung und Kamera flüssig bleiben
-  const gen = thinkShot(balls, frame, st.aiLevel, need === 1);
+  const gen = breakOff ? thinkBreak(balls, frame, st.aiLevel) : thinkShot(balls, frame, st.aiLevel, need === 1);
   const pump = () => {
     if (token !== st.aiToken) return;
     const t0 = performance.now();
     while (performance.now() - t0 < 10) {
       const r = gen.next();
-      if (r.done) { executeAi(r.value); return; }
+      if (r.done) {
+        if (r.value.place) {
+          [cue.x, cue.z] = r.value.place;
+          confirmPlacement();
+        }
+        executeAi(r.value);
+        return;
+      }
     }
     setTimeout(pump, 0);
   };
@@ -1157,6 +1166,7 @@ function updateHud() {
 // ---------------------------------------------------------------- Hauptschleife
 
 let last = performance.now();
+let drawAt = 0;
 function loop(now) {
   requestAnimationFrame(loop);
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -1239,7 +1249,8 @@ function loop(now) {
 
   view.syncBalls(balls, dt);
   updateCamera(dt);
-  view.render();
+  // Höchstens ~60 Bilder pro Sekunde (auf 120-Hz-Displays jedes zweite); gezeichnet wird nur bei Änderungen
+  if (now - drawAt >= 1000 / 60 - 2 && view.render()) drawAt = now;
 }
 
 drawSpin();

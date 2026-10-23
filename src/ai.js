@@ -1,9 +1,9 @@
 // Computergegner: sucht Lochversuche (mit Positionsspiel) und Safeties, indem er Kandidaten-Stöße
 // mit der echten Physik vorausberechnet und das Ergebnis nach den Regeln bewertet.
 // Die Spielstärke steuert Suchbreite, Positionsspiel und die Streuung bei der Ausführung.
-import { BALL_R as R, BAULK_Z, D_RADIUS, PHYS } from './constants.js';
+import { BALL_R as R, BAULK_Z, D_RADIUS, PHYS, TABLE_L } from './constants.js';
 import { cloneBalls, strike, step, anyMoving } from './physics.js';
-import { respot, minTipY, isSnookered, isFree, inD } from './table.js';
+import { respot, minTipY, isSnookered, isFree, inD, rackBalls } from './table.js';
 import { evaluatePot, refineAim, TARGETS } from './planner.js';
 
 export const AI_LEVELS = {
@@ -208,6 +208,84 @@ export function* thinkShot(balls, frame, levelKey, snookerMode = false) {
     best = { aim: Math.atan2(b.x - cue.x, -(b.z - cue.z)), power: 0.35, tipX: 0, tipY: 0, kind: 'safety', ball: b };
   }
   return best;
+}
+
+// ---------------------------------------------------------------- Anstoß
+
+const RACK = rackBalls();
+
+// Anstoß: alle Roten liegen noch unberührt im Dreieck und die Weiße ist in der Hand
+export function isBreakOff(balls, frame) {
+  if (frame.on !== 'red' || !frame.ballInHand) return false;
+  return RACK.every(r => r.kind !== 'red' || balls.some(b => b.id === r.id && b.onTable && Math.abs(b.x - r.x) < 1e-4 && Math.abs(b.z - r.z) < 1e-4));
+}
+
+// Ergebnisse je Spielstärke und Seite merken: Aufbau und Physik sind bei jedem Anstoß gleich
+const breakCache = new Map();
+
+// Klassischer Anstoß: Weiße auf der Baulk-Linie zwischen Braun und Gelb (bzw. Grün), die äußerste Rote
+// der hinteren Reihe etwa halbvoll von außen anspielen, mit Effet über Kopfbande und Seitenbande zurück
+// bis an die Baulk-Bande. Der Pack soll dabei möglichst geschlossen bleiben.
+// Ergebnis wie thinkShot, zusätzlich place: [x, z] für die Weiße.
+export function* thinkBreak(balls, frame, levelKey) {
+  const cfg = { ...AI_LEVELS[levelKey], snookerBonus: 3 };
+  const side = Math.random() < 0.5 ? 1 : -1; // 1 = Gelb-Seite, -1 = Grün-Seite (gespiegelt)
+  const key = `${levelKey}:${side}`;
+  if (breakCache.has(key)) return breakCache.get(key);
+  const me = frame.current;
+  const reds = balls.filter(b => b.kind === 'red' && b.onTable);
+  const backZ = Math.min(...reds.map(b => b.z));
+  const target = reds.filter(b => b.z < backZ + 1e-4).reduce((a, b) => (b.x * side > a.x * side ? b : a));
+  const HL = TABLE_L / 2;
+  // Ausgangsstellung für jede Variante: Weiße an die gewählte Stelle legen
+  const setup = x => {
+    const sim = cloneBalls(balls);
+    Object.assign(sim[0], { x, z: BAULK_Z, onTable: true });
+    return sim;
+  };
+  const aimFor = (x, frac) => {
+    const dx = target.x - x, dz = target.z - BAULK_Z, d = Math.hypot(dx, dz);
+    // frac: Versatz der Stoßlinie in Kugeldurchmessern zur Außenseite der Roten (0,5 = halbvoll)
+    return Math.atan2(dx, -dz) + side * Math.asin(frac * 2 * R / d);
+  };
+  const rate = r => {
+    const cue = r.sim[0];
+    if (r.out.foul) return scoreResult(r, cfg, me) - 10;
+    // Je tiefer die Weiße im Baulk-Bereich liegt, desto schwerer hat es der Gegner
+    const depth = cue.onTable ? (cue.z - BAULK_Z) / (HL - BAULK_Z) : -1;
+    return scoreResult(r, cfg, me) + (depth > 0 ? 3 * Math.min(1, depth) : -4 + 4 * depth);
+  };
+  const variants = [];
+  for (const x of [0.05, 0.12, 0.2].map(v => v * side)) {
+    for (const frac of [0.55, 0.6, 0.65, 0.7]) {
+      for (const tipX of [-0.3, -0.45].map(v => v * side)) {
+        for (const power of [0.72, 0.8, 0.88]) {
+          const aim = aimFor(x, frac);
+          const r = simulate(setup(x), frame, aim, power, tipX, 0);
+          yield;
+          variants.push({ x, aim, power, tipX, score: rate(r) });
+        }
+      }
+    }
+  }
+  // Die besten Varianten auch mit kleinen Fehlern in Richtung und Stärke prüfen
+  variants.sort((a, b) => b.score - a.score);
+  const top = variants.slice(0, 8);
+  for (const v of top) {
+    let sum = v.score;
+    const checks = [[-1.5, 0], [-0.5, 1], [0.5, -1], [1.5, 0]];
+    for (const [da, dp] of checks) {
+      const r = simulate(setup(v.x), frame, v.aim + da * cfg.aimNoise, v.power * (1 + dp * cfg.powerNoise), v.tipX, 0);
+      yield;
+      sum += rate(r);
+    }
+    v.score = sum / (checks.length + 1);
+  }
+  top.sort((a, b) => b.score - a.score);
+  const v = top[0];
+  const plan = { aim: v.aim, power: v.power, tipX: v.tipX, tipY: 0, kind: 'break', ball: target, place: [v.x, BAULK_Z] };
+  breakCache.set(key, plan);
+  return plan;
 }
 
 export function runSync(gen) {

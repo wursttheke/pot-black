@@ -355,6 +355,9 @@ export class View {
     r.setSize(innerWidth, innerHeight);
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Schatten werfen nur Tisch (statisch) und Queue: Schattenkarte nur neu berechnen, wenn sich das Queue bewegt
+    r.shadowMap.autoUpdate = false;
+    r.shadowMap.needsUpdate = true;
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.toneMappingExposure = 1.05;
     container.appendChild(r.domElement);
@@ -372,6 +375,7 @@ export class View {
       this.camera.updateProjectionMatrix();
       r.setSize(innerWidth, innerHeight);
       for (const l of Object.values(this.guides)) l.material.resolution.set(innerWidth, innerHeight);
+      this.invalidate();
     });
 
     this.buildLights();
@@ -383,6 +387,9 @@ export class View {
     this.tmpQ = new THREE.Quaternion();
     this.tmpV = new THREE.Vector3();
     this.raycaster = new THREE.Raycaster();
+    this.sig = [];
+    this.lastSig = [];
+    this.dirty = true;
   }
 
   buildLights() {
@@ -827,8 +834,43 @@ export class View {
     return hits.length ? hits[0].object.userData.ball : null;
   }
 
+  // Nächstes render() zeichnet auf jeden Fall (z. B. nach Größenänderung)
+  invalidate() { this.dirty = true; }
+
+  // Alles, was sich zwischen zwei Bildern sichtbar ändern kann, als Zahlenliste
+  signature() {
+    const s = this.sig;
+    s.length = 0;
+    const obj = o => {
+      s.push(o.visible ? 1 : 0);
+      if (o.visible) s.push(o.position.x, o.position.y, o.position.z, o.quaternion.x, o.quaternion.y, o.quaternion.z, o.quaternion.w);
+    };
+    const c = this.camera;
+    s.push(c.position.x, c.position.y, c.position.z, c.quaternion.x, c.quaternion.y, c.quaternion.z, c.quaternion.w,
+      c.projectionMatrix.elements[0], c.projectionMatrix.elements[5]);
+    obj(this.cue);
+    const cueEnd = s.length;
+    for (const m of this.ballMeshes.values()) obj(m);
+    obj(this.ghost); obj(this.endGhost);
+    s.push(this.dArea.visible ? 1 : 0, this.lamps.visible ? 1 : 0);
+    for (const l of Object.values(this.guides)) s.push(l.visible ? l.geometry.id : -1);
+    return cueEnd;
+  }
+
+  // Zeichnet nur, wenn sich seit dem letzten Bild etwas geändert hat; ein ruhender Tisch kostet so fast nichts
   render() {
+    const cueEnd = this.signature();
+    const s = this.sig, last = this.lastSig;
+    let changed = this.dirty || s.length !== last.length, cueChanged = changed;
+    for (let i = 0; i < s.length && !changed; i++) changed = Math.abs(s[i] - last[i]) > 1e-6;
+    if (!changed) return false;
+    for (let i = 9; i < cueEnd && !cueChanged; i++) cueChanged = Math.abs(s[i] - last[i]) > 1e-6;
+    if (cueChanged) this.renderer.shadowMap.needsUpdate = true;
+    this.sig = last;
+    this.lastSig = s;
+    this.dirty = false;
     this.renderer.render(this.scene, this.camera);
+    return true;
   }
 }
 
