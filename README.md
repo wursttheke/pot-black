@@ -15,15 +15,7 @@ Dann http://localhost:8123 öffnen.
 ## Deployment auf Render
 
 Das Repository enthält eine `render.yaml`. In Render „New → Blueprint“ wählen und dieses GitHub-Repository
-verbinden; Render startet dann `node serve.js` als Webdienst (Port kommt aus `$PORT`). WebSockets laufen über
-denselben Dienst (`wss://<dienst>.onrender.com/ws`).
-
-## Online-Modus
-
-Der Server stellt unter `/ws` eine WebSocket-Schnittstelle bereit (ohne externe Pakete). Mitspieler im
-selben Netzwerk öffnen `http://<IP-des-Rechners>:8123`. Ein Spieler erstellt ein Spiel, ein zweiter tritt
-bei; weitere können zuschauen. Der stoßende Spieler liefert das verbindliche Ergebnis, die anderen Browser
-spielen den Stoß zur Anzeige nach und übernehmen danach diesen Stand.
+verbinden; Render startet dann `node serve.js` als Webdienst (Port kommt aus `$PORT`).
 
 ## Aufbau
 
@@ -32,7 +24,5 @@ spielen den Stoß zur Anzeige nach und übernehmen danach diesen Stand.
 - `src/table.js` – Aufbau, Wiederaufsetzen der Farben, D-Bereich, Snooker-Prüfung (Free Ball)
 - `src/rules.js` – Frame-Ablauf: Rot/Farbe, Endsequenz, Fouls (min. 4), Respot, Re-Black bei Gleichstand
 - `src/render.js` – Szene, Tisch, Kugeln, Queue, Vorschaulinien
-- `src/main.js` – Eingabe, Ego-Kamera, Stoßablauf, HUD, Vorschau per Vorab-Simulation, Online-Ablauf
+- `src/main.js` – Eingabe, Ego-Kamera, Stoßablauf, HUD, Vorschau per Vorab-Simulation
 - `src/ai.js` – Computergegner in drei Spielstärken
-- `src/net.js` – WebSocket-Client für Lobby und Online-Spiele
-- `server/` – WebSocket-Protokoll und Lobby/Spielverwaltung

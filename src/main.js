@@ -12,13 +12,11 @@ import { AI_LEVELS, thinkShot, thinkBreak, isBreakOff, withNoise, choosePlacemen
 import { Attract } from './attract.js';
 import { Intro } from './intro.js';
 import { strokePull, followThrough, ballNearCue, updateLift } from './cuemotion.js';
-import { Net } from './net.js';
 
 const $ = id => document.getElementById(id);
 const view = new View($('app'));
 const sfx = new Sfx();
 const fx = new Celebration(sfx);
-const net = new Net();
 const canvas = view.canvas;
 
 const LINE_MODES = ['aus', 'kurz', 'voll'];
@@ -29,7 +27,7 @@ const st = {
   shotT: 0, shot: null, simAcc: 0, strikePos: null, moveT: 0, travel: null, cueLift: {},
   frames: [0, 0], names: ['Spieler 1', 'Spieler 2'], starter: 0,
   vsAi: true, aiLevel: 'medium', aiPlayer: 1, aiBusy: false, aiToken: 0, aiShootAt: 0,
-  menuMode: 'ai', online: null, remoteShot: false, netQueue: [], aimSentAt: 0, lastAimMsg: '',
+  menuMode: 'ai',
 };
 let balls = [], cue = null, frame = null;
 
@@ -87,9 +85,6 @@ function shoot() {
   st.strikePos = { x: cue.x, z: cue.z };
   st.cueLift = {};
   st.broadcast = broadcastActive() ? planBroadcast() : null;
-  if (st.online && !st.remoteShot) {
-    net.send({ type: 'shot', aim: st.aim, power: st.power, tipX: st.tipX, tipY: st.tipY, x: cue.x, z: cue.z });
-  }
   updateHud();
 }
 
@@ -121,13 +116,6 @@ function endOfShot() {
   settle(balls);
   st.camTransition = true; // Linien erst zeigen, wenn die Kamera angekommen ist
   setTip(0, 0);
-  if (st.remoteShot) {
-    // Stoß eines anderen Spielers: auf dessen verbindliches Ergebnis warten
-    st.remoteShot = false;
-    st.mode = 'waiting';
-    updateHud();
-    return;
-  }
   const prevBreak = frame.breakPts, shooter = frame.current;
   const out = frame.evaluate(st.shot, balls);
   const celebration = celebrationFor(out, prevBreak, st.visitStart, frame.names[shooter]);
@@ -139,13 +127,10 @@ function endOfShot() {
   }
   if (out.foul && !out.frameOver && !frame.ballInHand) frame.freeBall = isSnookered(cue, balls, b => frame.isOn(b));
   if (out.frameOver) st.frames[frame.winner]++;
-  if (st.online) {
-    net.send({ type: 'result', snapshot: makeSnapshot('result'), out: outSummary(out), celebration });
-  }
   presentOutcome(out, celebration);
 }
 
-// Ergebnis eines Stoßes anzeigen und den Spielablauf fortsetzen (lokal wie online)
+// Ergebnis eines Stoßes anzeigen und den Spielablauf fortsetzen
 function presentOutcome(out, celebration) {
   if (celebration) playCelebration(celebration.level, celebration.title, celebration.subtitle, celebration.points);
   const celebrated = celebration ? celebration.level : 0;
@@ -154,27 +139,16 @@ function presentOutcome(out, celebration) {
     toast(msgs.join(' · '));
     st.mode = 'over';
     updateHud();
-    const spectator = st.online && st.online.seat == null;
     // Bei einer Feier den Dialog etwas später zeigen, damit die Animation sichtbar bleibt
     setTimeout(() => showOverlay('Frame beendet',
       `<p><b>${frame.names[frame.winner]}</b> gewinnt das Frame ${frame.scores[0]} : ${frame.scores[1]}.</p>
        <p>Höchstes Break: ${frame.names[0]} ${frame.highBreak[0]} · ${frame.names[1]} ${frame.highBreak[1]}</p>
-       <p>Frames: ${st.frames[0]} : ${st.frames[1]}</p>
-       ${spectator ? '<p class="sub">Warte auf das nächste Frame…</p>' : ''}`,
-      spectator ? [['Spiel verlassen', confirmLeave]] : [['Nächstes Frame', requestNewFrame], ['Spiel verlassen', confirmLeave]]), celebrated >= 4 ? 11000 : celebrated ? 3500 : 0);
+       <p>Frames: ${st.frames[0]} : ${st.frames[1]}</p>`,
+      [['Nächstes Frame', requestNewFrame], ['Spiel verlassen', confirmLeave]]), celebrated >= 4 ? 11000 : celebrated ? 3500 : 0);
     return;
   }
   if (out.foul) {
     toast(msgs.join(' · '));
-    if (st.online && (st.online.seat == null || st.online.seat === out.offender)) {
-      // Online entscheidet der Gegner des Verursachers in seinem Browser
-      st.mode = 'decision';
-      updateHud();
-      showOverlay('Foul', `<p>${out.reasons.map(r => r[0].toUpperCase() + r.slice(1)).join('<br>')}</p>
-        <p><b>${out.penalty} Punkte</b> für ${frame.names[1 - out.offender]}.</p>
-        <p class="sub">Warte auf die Entscheidung von ${frame.names[1 - out.offender]}…</p>`, []);
-      return;
-    }
     if (st.vsAi && 1 - out.offender === st.aiPlayer) {
       // Der Computer entscheidet nach einem Foul des Menschen: er spielt selbst
       proceedTurn();
@@ -217,10 +191,6 @@ function suggestNextShot() {
 
 // Entscheidung nach einem Foul: selbst spielen oder den Verursacher erneut spielen lassen
 function decide(putBack) {
-  if (st.online) net.send({ type: 'decision', putBack });
-  applyDecision(putBack);
-}
-function applyDecision(putBack) {
   if (putBack) frame.putBack();
   hideOverlay();
   proceedTurn();
@@ -228,10 +198,8 @@ function applyDecision(putBack) {
 }
 
 function requestNewFrame() {
-  if (st.mode !== 'over') return; // schon gestartet (z. B. vom Gegner)
-  if (st.online) net.send({ type: 'newFrame' });
+  if (st.mode !== 'over') return;
   newFrame();
-  if (st.online) sendState();
 }
 
 function playCelebration(level, title, subtitle, points) {
@@ -249,14 +217,12 @@ function proceedTurn() {
 // ---------------------------------------------------------------- Computergegner
 
 function isAiTurn() {
-  return st.vsAi && !st.online && frame && !frame.over && frame.current === st.aiPlayer;
+  return st.vsAi && frame && !frame.over && frame.current === st.aiPlayer;
 }
 
-// Darf der Mensch an diesem Gerät gerade nicht spielen? (Computer am Zug, Online-Gegner am Zug, Zuschauer)
+// Darf der Mensch gerade nicht spielen? (Computer am Zug)
 function inputLocked() {
-  if (isAiTurn()) return true;
-  if (!st.online) return false;
-  return st.online.seat == null || !frame || frame.current !== st.online.seat;
+  return isAiTurn();
 }
 
 function maybeStartAi() {
@@ -327,240 +293,17 @@ function executeAi(plan) {
   updateHud();
 }
 
-// ---------------------------------------------------------------- Online
-
-function makeSnapshot(kind) {
-  return {
-    kind,
-    balls: balls.map(b => ({ id: b.id, x: b.x, z: b.z, onTable: b.onTable })),
-    frame: {
-      names: frame.names, scores: frame.scores, current: frame.current, on: frame.on, breakPts: frame.breakPts,
-      highBreak: frame.highBreak, freeBall: frame.freeBall, ballInHand: frame.ballInHand,
-      over: frame.over, winner: frame.winner, reBlack: frame.reBlack,
-    },
-    frames: st.frames, starter: st.starter, mode: st.mode,
-  };
-}
-
-function outSummary(out) {
-  const { foul, reasons, penalty, points, offender, messages, frameOver, reBlack } = out;
-  return { foul, reasons, penalty, points, offender, messages, frameOver, reBlack };
-}
-
-function sendState() {
-  net.send({ type: 'state', snapshot: makeSnapshot('state') });
-}
-
-// Verbindlichen Spielstand übernehmen
-function applySnapshot(snap) {
-  if (!balls.length || balls.length !== snap.balls.length || balls === attract.balls) {
-    balls = rackBalls();
-    cue = balls[0];
-    view.setBalls(balls);
-  }
-  for (const s of snap.balls) {
-    const b = balls.find(x => x.id === s.id);
-    if (!b) continue;
-    if (b.onTable && !s.onTable && b.pocket) { b.onTable = false; continue; } // läuft gerade in die Tasche
-    Object.assign(b, { x: s.x, z: s.z, onTable: s.onTable, vx: 0, vz: 0, wx: 0, wy: 0, wz: 0 });
-    if (s.onTable) b.pocket = null;
-  }
-  frame = Object.assign(new Frame(snap.frame.names), structuredClone(snap.frame));
-  st.names = [...snap.frame.names];
-  st.frames = [...snap.frames];
-  st.starter = snap.starter;
-}
-
-function applyResult(msg) {
-  applySnapshot(msg.snapshot);
-  presentOutcome(msg.out, msg.celebration);
-}
-
-// Online-Spiel betreten (als Spieler oder Zuschauer)
-function enterOnlineGame(names, seat, gameId) {
-  st.online = { gameId, seat };
-  st.vsAi = false;
-  st.netQueue = [];
-  st.names = [...names];
-  st.frames = [0, 0];
-  st.starter = 0;
-  st.remoteShot = false;
-  $('menu').classList.add('hidden');
-  $('hud').classList.remove('hidden');
-  setHelp(initialHelp());
-  hideOverlay();
-}
-
-// Eingehende Spielnachrichten der Reihe nach abarbeiten, sobald der lokale Zustand dazu passt
-function processNet() {
-  while (st.online && st.netQueue.length) {
-    const m = st.netQueue[0];
-    if (m.type === 'aim') {
-      st.netQueue.shift();
-      if (inputLocked() && (st.mode === 'aim' || st.mode === 'place')) {
-        if (st.mode === 'place') Object.assign(cue, { x: m.x, z: m.z });
-        st.aim = m.aim; st.power = m.power; st.wantX = m.tipX; st.wantY = m.tipY;
-        st.predDirty = true;
-        drawSpin(); updateHud();
-      }
-      continue;
-    }
-    if (m.type === 'shot') {
-      if (st.mode !== 'aim' && st.mode !== 'place') return;
-      st.netQueue.shift();
-      if (st.mode === 'place') confirmPlacement();
-      Object.assign(cue, { x: m.x, z: m.z });
-      st.aim = m.aim; st.power = m.power;
-      st.wantX = st.tipX = m.tipX; st.wantY = st.tipY = m.tipY;
-      st.travel = null;
-      st.remoteShot = true;
-      shoot();
-      continue;
-    }
-    if (m.type === 'result') {
-      if (st.mode === 'shooting' || st.mode === 'moving') return;
-      st.netQueue.shift();
-      applyResult(m);
-      continue;
-    }
-    if (m.type === 'decision') {
-      if (st.mode !== 'decision') return;
-      st.netQueue.shift();
-      applyDecision(m.putBack);
-      continue;
-    }
-    if (m.type === 'newFrame') {
-      if (st.mode === 'shooting' || st.mode === 'moving') return;
-      st.netQueue.shift();
-      if (st.mode === 'over') newFrame(); // beide haben gleichzeitig geklickt: nur einmal starten
-      continue;
-    }
-    if (m.type === 'state') {
-      st.netQueue.shift();
-      if (st.mode !== 'shooting' && st.mode !== 'moving') applySnapshot(m.snapshot);
-      continue;
-    }
-    st.netQueue.shift();
-  }
-}
-
-// Eigene Zielbewegung für Gegner und Zuschauer (gedrosselt)
-function sendAim(now) {
-  if (!st.online || inputLocked() || (st.mode !== 'aim' && st.mode !== 'place') || now - st.aimSentAt < 90) return;
-  const m = { type: 'aim', aim: st.aim, power: st.power, tipX: st.wantX, tipY: st.wantY, x: cue.x, z: cue.z, mode: st.mode };
-  const key = JSON.stringify(m);
-  if (key === st.lastAimMsg) return;
-  st.lastAimMsg = key;
-  st.aimSentAt = now;
-  net.send(m);
-}
-
-for (const t of ['aim', 'shot', 'result', 'decision', 'newFrame', 'state']) {
-  net.on(t, m => { if (st.online) st.netQueue.push(m); });
-}
-net.on('created', m => {
-  st.pendingGame = m.gameId;
-  showOverlay('Warte auf Gegner', '<p>Dein Spiel ist erstellt und erscheint bei anderen Spielern in der Lobby.</p><p class="sub">Sobald jemand beitritt, beginnt das Frame. Du hast Anstoß.</p>',
-    [['Abbrechen', () => { net.send({ type: 'leave' }); st.pendingGame = null; hideOverlay(); }]]);
-});
-net.on('start', m => {
-  st.pendingGame = null;
-  enterOnlineGame(m.names, m.seat, m.gameId);
-  newFrame();
-  if (m.seat === 0) sendState();
-  toast(m.seat == null ? `${m.names[0]} gegen ${m.names[1]} – das Frame beginnt` : `Online-Frame gegen ${m.names[1 - m.seat]}`);
-});
-net.on('watching', m => {
-  enterOnlineGame(m.names, null, m.gameId);
-  if (m.snapshot) {
-    applySnapshot(m.snapshot);
-    if (m.snapshot.mode === 'over') { st.mode = 'over'; updateHud(); }
-    else if (frame.ballInHand) startPlacing();
-    else { st.mode = 'aim'; updateHud(); }
-  } else if (m.started) {
-    newFrame();
-  } else {
-    showOverlay('Zuschauen', `<p>${m.names[0]} wartet noch auf einen Gegner.</p>`, [['Spiel verlassen', confirmLeave]]);
-    balls = rackBalls(); cue = balls[0]; view.setBalls(balls);
-    frame = new Frame([m.names[0], '…']);
-    st.mode = 'over';
-    updateHud();
-  }
-});
-net.on('opponentLeft', m => {
-  if (!st.online) return;
-  st.online = null;
-  showOverlay('Spiel beendet', `<p>${m.name} hat das Spiel verlassen.</p>`, [['Zum Menü', backToMenu]]);
-  st.mode = 'over';
-  updateHud();
-});
-net.on('error', m => { $('netStatus').textContent = m.message; });
-net.on('status', m => {
-  const el = $('netStatus');
-  el.textContent = { connecting: 'Verbinde…', open: 'Verbunden', closed: 'Getrennt – verbinde neu…' }[m.state];
-  el.classList.toggle('ok', m.state === 'open');
-});
-net.on('lobby', m => renderLobby(m.games));
-
-function renderLobby(games) {
-  const list = $('lobbyList');
-  list.innerHTML = '';
-  if (!games.length) {
-    const li = document.createElement('li');
-    li.className = 'empty';
-    li.textContent = 'Noch keine Spiele – erstelle eins!';
-    list.appendChild(li);
-    return;
-  }
-  for (const g of games) {
-    const li = document.createElement('li');
-    const names = document.createElement('span');
-    names.className = 'g-names';
-    names.textContent = g.players.join(' vs. ');
-    const state = document.createElement('span');
-    state.className = 'g-state' + (g.status === 'open' ? ' open' : '');
-    state.textContent = g.status === 'open' ? 'wartet' : `läuft${g.watchers ? ` · ${g.watchers} 👁` : ''}`;
-    li.append(names, state);
-    if (g.id === st.pendingGame) {
-      const own = document.createElement('span');
-      own.className = 'g-state';
-      own.textContent = 'dein Spiel';
-      li.append(own);
-    } else {
-      if (g.status === 'open') li.append(lobbyButton('Beitreten', () => net.send({ type: 'join', gameId: g.id, name: playerName() })));
-      li.append(lobbyButton('Zuschauen', () => net.send({ type: 'watch', gameId: g.id })));
-    }
-    list.appendChild(li);
-  }
-}
-
-function lobbyButton(label, fn) {
-  const b = document.createElement('button');
-  b.textContent = label;
-  b.onclick = () => { sfx.unlock(); fn(); };
-  return b;
-}
-
-const playerName = () => $('n1').value.trim() || 'Spieler';
-
 // ---------------------------------------------------------------- Navigation
 
 function confirmLeave() {
   // Ein gerade offener Dialog (z. B. Foul-Entscheidung) wird beim Abbrechen wiederhergestellt
   const prev = $('overlay').classList.contains('hidden') ? null : st.lastOverlay;
-  const player = st.online && st.online.seat != null;
-  showOverlay('Spiel verlassen?',
-    player ? '<p>Das Online-Spiel endet damit auch für deinen Gegner.</p>'
-      : st.online ? '<p>Du verlässt das Spiel als Zuschauer.</p>' : '<p>Der aktuelle Spielstand geht verloren.</p>',
-    [['Verlassen', () => { if (st.online) net.send({ type: 'leave' }); backToMenu(); }],
+  showOverlay('Spiel verlassen?', '<p>Der aktuelle Spielstand geht verloren.</p>',
+    [['Verlassen', backToMenu],
      ['Weiterspielen', () => (prev ? showOverlay(...prev) : hideOverlay())]]);
 }
 
 function backToMenu() {
-  st.online = null;
-  st.pendingGame = null;
-  st.netQueue = [];
-  st.remoteShot = false;
   st.aiBusy = false; st.aiToken++;
   st.travel = null;
   st.camTransition = false;
@@ -573,7 +316,6 @@ function backToMenu() {
   $('hud').classList.add('hidden');
   $('menu').classList.remove('hidden');
   attract.next();
-  if (st.menuMode === 'online') net.connect(playerName());
 }
 
 // ---------------------------------------------------------------- Vorschau
@@ -748,7 +490,7 @@ function topViewFit() {
 }
 
 // ---------------------------------------------------------------- TV-Regie
-// Wer nur zuschaut (oder gerade nicht am Zug ist), sieht das Spiel wie im Fernsehen: Hauptkamera
+// Ist der Computer am Zug, sieht der Spieler das Spiel wie im Fernsehen: Hauptkamera
 // erhöht hinter der Baulk-Bande; beim Stoß Schnitte auf die Tasche und danach auf die Weiße.
 
 function broadcastActive() {
@@ -803,8 +545,8 @@ function broadcastCam() {
     // Kurz vor dem Stoß (während des Ausholens) bereits in die Taschenkamera schneiden
     const pre = st.broadcast.cuts.find(c => c.pre);
     if (pre && st.shotT >= 0.3) cam = pre.cam;
-  } else if (st.broadcast && (st.mode === 'moving' || st.mode === 'waiting')) {
-    const t = st.mode === 'moving' ? st.moveT : Infinity;
+  } else if (st.broadcast && st.mode === 'moving') {
+    const t = st.moveT;
     for (const c of st.broadcast.cuts) if (c.t <= t) cam = c.cam;
   }
   tPos.set(...cam.pos); tLook.set(...cam.look); tUp.set(0, 1, 0);
@@ -1084,32 +826,26 @@ function initialHelp() {
   try { stored = localStorage.getItem('potblack.help'); } catch { /* Speicher nicht verfügbar */ }
   return stored === null ? innerWidth >= 1200 : stored === '1';
 }
-// Startmenü: Single Player (gegen Computer), Multi Player (ein Gerät) oder Online; Felder nur bei Bedarf
+// Startmenü: Single Player (gegen Computer) oder Multi Player (ein Gerät); Felder nur bei Bedarf
 function setMode(mode) {
   st.menuMode = mode;
   st.vsAi = mode === 'ai';
-  for (const [id, m] of [['modeAi', 'ai'], ['modePvp', 'pvp'], ['modeOnline', 'online']]) {
+  for (const [id, m] of [['modeAi', 'ai'], ['modePvp', 'pvp']]) {
     $(id).classList.toggle('on', mode === m);
     $(id).setAttribute('aria-checked', mode === m);
   }
   $('aiRow').classList.toggle('hidden', mode !== 'ai');
   $('n2Field').classList.toggle('hidden', mode !== 'pvp');
-  $('onlineRow').classList.toggle('hidden', mode !== 'online');
-  $('start').classList.toggle('hidden', mode === 'online');
   $('n1Label').textContent = mode === 'pvp' ? 'Spieler 1' : 'Dein Name';
-  if (mode === 'online') net.connect(playerName());
 }
 $('modeAi').addEventListener('click', () => setMode('ai'));
 $('modePvp').addEventListener('click', () => setMode('pvp'));
-$('modeOnline').addEventListener('click', () => setMode('online'));
 for (const b of document.querySelectorAll('#aiRow button')) {
   b.addEventListener('click', () => {
     st.aiLevel = b.dataset.level;
     for (const o of document.querySelectorAll('#aiRow button')) o.classList.toggle('on', o === b);
   });
 }
-$('createGame').addEventListener('click', () => { sfx.unlock(); net.send({ type: 'create', name: playerName() }); });
-$('n1').addEventListener('change', () => { if (st.menuMode === 'online') net.connect(playerName()); });
 $('btnLeave').addEventListener('click', confirmLeave);
 
 // Ton ein/aus; Einstellung bleibt im Browser gespeichert
@@ -1151,7 +887,6 @@ setMode('ai');
 
 $('start').addEventListener('click', () => {
   sfx.unlock();
-  st.online = null;
   st.names = [$('n1').value.trim() || 'Spieler 1',
     st.vsAi ? `Computer (${AI_LEVELS[st.aiLevel].label})` : $('n2').value.trim() || 'Spieler 2'];
   st.starter = 0;
@@ -1215,18 +950,17 @@ function updateHud() {
   const ai = inputLocked();
   $('btnShoot').disabled = ai || !(st.mode === 'aim' || st.mode === 'place');
   $('btnPlace').classList.toggle('hidden', st.mode !== 'place' || ai);
-  const watching = st.online && st.online.seat == null ? 'Zuschauer · ' : '';
   if (ai && (st.mode === 'aim' || st.mode === 'place')) {
     $('status').textContent = isAiTurn()
       ? (st.travel || st.aiShootAt > performance.now() ? `${frame.names[st.aiPlayer]} zielt…` : `${frame.names[st.aiPlayer]} denkt nach…`)
-      : `${watching}${frame.names[frame.current]} ist am Zug`;
+      : `${frame.names[frame.current]} ist am Zug`;
     return;
   }
-  $('status').textContent = watching + ({
+  $('status').textContent = ({
     place: isMobile() ? 'Weiße im D platzieren: ziehen zum Verschieben, tippen zum Bestätigen'
       : 'Weiße im D platzieren: ziehen zum Verschieben, Klick oder Leertaste zum Bestätigen',
     aim: frame.ballInHand && !isMobile() ? 'Zielen · P = Weiße neu platzieren' : 'Zielen',
-    shooting: 'Stoß…', moving: 'Kugeln laufen…', waiting: 'Warte auf das Ergebnis…',
+    shooting: 'Stoß…', moving: 'Kugeln laufen…',
     decision: 'Entscheidung nach Foul', over: 'Frame beendet',
   }[st.mode] || '');
 }
@@ -1240,8 +974,6 @@ function loop(now) {
   const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
   last = now;
   sfx.frame();
-  processNet();
-  sendAim(now);
   if (intro.active) {
     intro.update(dt);
     if (now - drawAt >= 1000 / 60 - 2 && view.render()) drawAt = now;
@@ -1307,7 +1039,7 @@ function loop(now) {
 
   const camBusy = st.travel || st.camTransition;
   if (frame && inputLocked()) {
-    // Zuschauer und wartende Spieler sehen keine Hilfslinien und Geisterbälle
+    // Während der Computer am Zug ist, keine Hilfslinien und Geisterbälle
     view.setPrediction(null);
   } else if (camBusy && st.mode === 'aim') {
     view.setPrediction(null);

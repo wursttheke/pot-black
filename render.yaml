@@ -1,4 +1,4 @@
-# Render Blueprint: ein Node-Webdienst, der das Spiel ausliefert und die WebSocket-Lobby bereitstellt.
+# Render Blueprint: ein Node-Webdienst, der das Spiel ausliefert.
 # Keine Abhängigkeiten – es gibt nichts zu bauen. Render setzt PORT automatisch.
 services:
   - type: web

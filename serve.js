@@ -1,12 +1,9 @@
-// Lokaler Server: liefert das Spiel ohne Browser-Caching aus (ES-Module werden sonst veraltet geladen)
-// und stellt unter /ws die WebSocket-Schnittstelle für Online-Spiele bereit.
+// Lokaler Server: liefert das Spiel ohne Browser-Caching aus (ES-Module werden sonst veraltet geladen).
 // Start: node serve.js [port] – auf Hosting-Plattformen (z. B. Render) kommt der Port aus $PORT.
 import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { acceptUpgrade } from './server/websocket.js';
-import { attachClient } from './server/games.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT) || Number(process.argv[2]) || 8123;
@@ -51,12 +48,6 @@ const server = http.createServer(async (req, res) => {
   } catch {
     res.writeHead(404, { 'Cache-Control': 'no-store' }).end('Not found');
   }
-});
-
-server.on('upgrade', (req, socket) => {
-  if (new URL(req.url, 'http://localhost').pathname !== '/ws') { socket.destroy(); return; }
-  const ws = acceptUpgrade(req, socket);
-  if (ws) attachClient(ws);
 });
 
 server.listen(port, host, () => console.log(`Pot Black läuft auf http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`));

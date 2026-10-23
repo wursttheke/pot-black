@@ -7,12 +7,12 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <!-- Vorschau beim Teilen des Links; __ORIGIN__ ersetzt der Server durch die aufgerufene Adresse -->
-<meta name="description" content="3D-Snooker im Browser: gegen den Computer, zu zweit an einem Gerät oder online gegen Freunde.">
+<meta name="description" content="3D-Snooker im Browser: gegen den Computer oder zu zweit an einem Gerät.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Pot Black">
 <meta property="og:locale" content="de_DE">
 <meta property="og:title" content="Pot Black – 3D Snooker">
-<meta property="og:description" content="3D-Snooker im Browser: gegen den Computer, zu zweit an einem Gerät oder online gegen Freunde.">
+<meta property="og:description" content="3D-Snooker im Browser: gegen den Computer oder zu zweit an einem Gerät.">
 <meta property="og:url" content="__ORIGIN__/">
 <meta property="og:image" content="__ORIGIN__/og-image.jpg">
 <meta property="og:image:type" content="image/jpeg">
@@ -174,20 +174,8 @@
   .logo { flex: 0 0 auto; width: 54px; height: 54px; border-radius: 50%;
     background: radial-gradient(circle at 34% 30%, #6b6b6b 0, #1e1e1e 22%, #050505 60%, #000 100%);
     box-shadow: 0 8px 20px rgba(0,0,0,.6), 0 0 0 3px rgba(35,150,63,.55); }
-  .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 18px; }
+  .modes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 18px; }
   @media (max-width: 520px) { .modes { grid-template-columns: 1fr; } }
-  .lobby-head { display: flex; justify-content: space-between; align-items: baseline; }
-  .net-status { font-size: 11px; color: var(--muted); }
-  .net-status.ok { color: #5fd17a; }
-  .lobby { list-style: none; margin: 0; padding: 0; max-height: 210px; overflow-y: auto; border: 1px solid var(--line); border-radius: 10px; }
-  .lobby li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
-  .lobby li:last-child { border-bottom: 0; }
-  .lobby .g-names { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .lobby .g-state { font-size: 11px; color: var(--muted); white-space: nowrap; }
-  .lobby .g-state.open { color: #5fd17a; }
-  .lobby li button { padding: 5px 12px; font-size: 13px; }
-  .lobby .empty { color: var(--muted); font-size: 13px; justify-content: center; }
-  #createGame { width: 100%; padding: 11px; font-size: 15px; border-radius: 10px; background: #8a5a12; border-color: #c38a2a; font-weight: 600; }
   .mode { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 14px 14px 12px; border-radius: 12px;
     background: #1c2026; border: 1px solid var(--line); text-align: left; transition: border-color .2s, background .2s, transform .15s; }
   .mode:hover { background: #232830; }
@@ -225,7 +213,6 @@
     .mode-desc { font-size: 11.5px; }
     .field { gap: 4px; margin-bottom: 10px; }
     .seg button { padding: 7px 8px; }
-    .lobby { max-height: 140px; }
     #start { padding: 11px; font-size: 16px; }
     .hint { margin-top: 10px !important; font-size: 11px; }
   }
@@ -341,7 +328,7 @@
       <span class="logo" aria-hidden="true"></span>
       <div>
         <h1>Pot Black</h1>
-        <p class="tagline">3D Snooker · online &amp; im Browser</p>
+        <p class="tagline">3D Snooker im Browser</p>
         <p class="sub">Kreide aufs Queue – zeig, was in dir steckt, und spiel dein bestes Break!</p>
       </div>
     </header>
@@ -356,11 +343,6 @@
         <span class="mode-icon" aria-hidden="true">●●</span>
         <span class="mode-title">Local Multiplayer</span>
         <span class="mode-desc">Zwei Spieler an einem Gerät</span>
-      </button>
-      <button id="modeOnline" class="mode" role="radio" aria-checked="false">
-        <span class="mode-icon" aria-hidden="true">◎</span>
-        <span class="mode-title">Online Multiplayer</span>
-        <span class="mode-desc">Spielen oder zuschauen</span>
       </button>
     </div>
 
@@ -382,15 +364,6 @@
         <span class="field-label">Spieler 2</span>
         <input id="n2" value="Spieler 2" maxlength="20">
       </label>
-    </div>
-
-    <div id="onlineRow" class="field reveal hidden">
-      <div class="lobby-head">
-        <span class="field-label">Offene und laufende Spiele</span>
-        <span id="netStatus" class="net-status">Verbinde…</span>
-      </div>
-      <ul id="lobbyList" class="lobby"></ul>
-      <button id="createGame">Neues Spiel erstellen</button>
     </div>
 
     <button id="start">Frame starten</button>
