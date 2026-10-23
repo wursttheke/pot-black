@@ -4,10 +4,10 @@ import { BALL_R as R, TABLE_L, TABLE_W, BAULK_Z, PHYS } from './constants.js';
 import { strike, step, POCKETS } from './physics.js';
 import { rackBalls } from './table.js';
 import { evaluatePot, refineAim, TARGETS } from './planner.js';
+import { strokeDuration, strokePull, followThrough, ballNearCue, updateLift } from './cuemotion.js';
 
 const HW = TABLE_W / 2, HL = TABLE_L / 2;
 const lerp = (a, b, t) => a + (b - a) * t;
-const ease = t => t * t * (3 - 2 * t);
 const byName = (balls, name) => balls.find(b => b.name === name);
 const target = (sx, sz) => TARGETS.find(t => Math.sign(t.x) === sx && (sz === 0 ? Math.abs(t.z) < 0.01 : Math.sign(t.z) === sz));
 
@@ -208,6 +208,7 @@ export class Attract {
     this.t = 0;
     this.struck = false;
     this.simAcc = 0;
+    this.lift = {};
     this.changed = true;
   }
 
@@ -218,19 +219,19 @@ export class Attract {
     const def = this.def, shot = this.shot, cue = this.balls[0];
     let cueState = null;
     if (shot) {
-      const tShot = this.t - def.shotAt;
+      // Ausholen und Zustoßen wie im Spiel; getroffen wird wie bisher bei shotAt + 0,1 s
+      const hitAt = def.shotAt + 0.1;
       if (!this.struck) {
-        // Ausholen und Zustoßen wie im Spiel
-        const back = 0.03 + shot.power * 0.17;
-        let pull = 0.012 + back * ease(Math.min(1, Math.max(0, (tShot + 0.9) / 0.5)));
-        if (tShot > 0) pull = Math.max(0, (0.012 + back) * (1 - (tShot / 0.1) ** 2));
-        if (tShot >= 0.1) {
+        const { pull, hit } = strokePull(this.t - (hitAt - strokeDuration(shot.power)), shot.power);
+        if (hit) {
           strike(cue, shot.aim, shot.power, shot.tipX, shot.tipY);
           this.struck = true;
         }
-        cueState = { pos: this.start, pull };
-      } else if (tShot < 0.6) {
-        cueState = { pos: this.start, pull: -0.05 * Math.min(1, (tShot - 0.1) / 0.12) };
+        cueState = { pos: this.start, pull, lift: 0 };
+      } else {
+        // Queue bleibt liegen und wird angehoben, wenn eine Kugel darauf zurollt
+        const pull = followThrough(this.t - hitAt, shot.power);
+        cueState = { pos: this.start, pull, lift: updateLift(this.lift, ballNearCue(this.balls, this.start, shot.aim, pull, 0.07, shot.tipY, this.lift), dt) };
       }
     }
     if (this.struck) {

@@ -860,17 +860,19 @@ export class View {
   }
 
   // Queue hinter die Weiße legen. pull: Abstand Spitze -> Kugeloberfläche
-  setCue(visible, cue, aim, tipX, tipY, pull, elev = 0.07) {
+  // lift 0..1: Queue angehoben (eine Kugel rollt nach dem Stoß darauf zu)
+  setCue(visible, cue, aim, tipX, tipY, pull, elev = 0.07, lift = 0) {
     const g = this.cue;
     g.visible = visible;
     if (!visible) return;
+    elev += lift * 0.14;
     const dx = Math.sin(aim), dz = -Math.cos(aim);
     const rx = -dz, rz = dx;
     const a = tipX * R, b = tipY * R;
     const depth = Math.sqrt(Math.max(0, R * R - a * a - b * b));
     const px = cue.x - dx * depth + rx * a, py = R + b, pz = cue.z - dz * depth + rz * a;
     const ex = -dx * Math.cos(elev), ey = Math.sin(elev), ez = -dz * Math.cos(elev);
-    g.position.set(px + ex * pull, py + ey * pull, pz + ez * pull);
+    g.position.set(px + ex * pull, py + ey * pull + lift * 0.08, pz + ez * pull);
     g.lookAt(g.position.x - ex, g.position.y - ey, g.position.z - ez);
   }
 

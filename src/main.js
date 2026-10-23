@@ -11,6 +11,7 @@ import { Celebration, celebrationFor } from './celebrate.js';
 import { AI_LEVELS, thinkShot, thinkBreak, isBreakOff, withNoise, choosePlacement, snookersNeeded } from './ai.js';
 import { Attract } from './attract.js';
 import { Intro } from './intro.js';
+import { strokePull, followThrough, ballNearCue, updateLift } from './cuemotion.js';
 import { Net } from './net.js';
 
 const $ = id => document.getElementById(id);
@@ -25,7 +26,7 @@ const st = {
   mode: 'menu', aim: 0, power: 0.35, tipX: 0, tipY: 0, wantX: 0, wantY: 0, minTipY: -MAX_TIP, elev: 0.07,
   camMode: 'fp', prevCam: 'fp', lines: 2, ghosts: true, camH: 0.26,
   shotCam: null, predDirty: true, predAt: 0,
-  shotT: 0, shot: null, simAcc: 0, strikePos: null, moveT: 0, travel: null,
+  shotT: 0, shot: null, simAcc: 0, strikePos: null, moveT: 0, travel: null, cueLift: {},
   frames: [0, 0], names: ['Spieler 1', 'Spieler 2'], starter: 0,
   vsAi: true, aiLevel: 'medium', aiPlayer: 1, aiBusy: false, aiToken: 0, aiShootAt: 0,
   menuMode: 'ai', online: null, remoteShot: false, netQueue: [], aimSentAt: 0, lastAimMsg: '',
@@ -83,6 +84,7 @@ function shoot() {
   if (frame.breakPts === 0) st.visitStart = balls.filter(b => b.onTable && b.kind !== 'cue').length;
   st.shotCam = { pos: view.camera.position.clone(), look: camLook.clone(), up: view.camera.up.clone() };
   st.strikePos = { x: cue.x, z: cue.z };
+  st.cueLift = {};
   st.broadcast = broadcastActive() ? planBroadcast() : null;
   if (st.online && !st.remoteShot) {
     net.send({ type: 'shot', aim: st.aim, power: st.power, tipX: st.tipX, tipY: st.tipY, x: cue.x, z: cue.z });
@@ -1234,17 +1236,9 @@ function loop(now) {
 
   if (st.mode === 'shooting') {
     st.shotT += dt;
-    const back = 0.03 + st.power * 0.17;
-    const T1 = 0.45, T2 = 0.6, fd = 0.16 - st.power * 0.1;
-    let pull;
-    if (st.shotT < T1) { const f = st.shotT / T1; pull = 0.012 + back * (1 - (1 - f) * (1 - f)); }
-    else if (st.shotT < T2) pull = 0.012 + back;
-    else {
-      const f = Math.min(1, (st.shotT - T2) / fd);
-      pull = (0.012 + back) * (1 - f * f);
-      if (f >= 1) doStrike();
-    }
+    const { pull, hit } = strokePull(st.shotT, st.power);
     view.setCue(true, cue, st.aim, st.tipX, st.tipY, pull, st.elev);
+    if (hit) doStrike();
   } else if (st.mode === 'moving') {
     st.moveT += dt;
     st.simAcc += dt;
@@ -1255,8 +1249,10 @@ function loop(now) {
       step(balls, PHYS.dt, ev);
       if (ev.length) handleEvents(ev);
     }
-    const ft = Math.min(1, st.moveT / 0.12);
-    view.setCue(st.moveT < 0.7, st.strikePos, st.aim, st.tipX, st.tipY, -0.05 * ft, st.elev);
+    // Queue bleibt nach dem Stoß liegen; rollt eine Kugel darauf zu, wird es angehoben
+    const pull = followThrough(st.moveT, st.power);
+    const lift = updateLift(st.cueLift, ballNearCue(balls, st.strikePos, st.aim, pull, st.elev, st.tipY, st.cueLift), dt);
+    view.setCue(true, st.strikePos, st.aim, st.tipX, st.tipY, pull, st.elev, lift);
     if (!anyMoving(balls) && st.moveT > 0.3) {
       view.setCue(false);
       endOfShot();
@@ -1283,7 +1279,7 @@ function loop(now) {
       view.setBalls(balls);
     }
     st.attractCam = a.cam;
-    if (a.cue) view.setCue(true, a.cue.pos, a.cue.aim, a.cue.tipX, a.cue.tipY, a.cue.pull, 0.07);
+    if (a.cue) view.setCue(true, a.cue.pos, a.cue.aim, a.cue.tipX, a.cue.tipY, a.cue.pull, 0.07, a.cue.lift);
     else view.setCue(false);
   } else {
     view.setCue(false);
