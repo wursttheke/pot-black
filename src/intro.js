@@ -8,9 +8,10 @@ import { BALL_R as R, BAULK_Z, D_RADIUS } from './constants.js';
 const WIRE_COLOR = 0x7fdcff;
 const GRID_COLOR = 0xffb000;
 const FLOOR_Y = -0.86;
-const SCAN_FROM = FLOOR_Y - 0.02, SCAN_TO = 1.26;
+const SCAN_FROM = FLOOR_Y - 0.02, SCAN_TO = 0.12; // bis knapp über Rahmen und Kugeln
 // Spielball (Anstoßposition, wie im Vorspann) und Kamera für die Nahaufnahme, die ihn umkreist
 const CUE_X = D_RADIUS / 2, CUE_Z = BAULK_Z;
+const ORBIT_SPEED = 0.07; // Winkelgeschwindigkeit der Kreisfahrt im Vorspann (attract.js)
 const cueCam = (a, r, y) => [CUE_X + Math.sin(a) * r, y, CUE_Z + Math.cos(a) * r];
 
 const clamp01 = t => Math.max(0, Math.min(1, t));
@@ -36,7 +37,10 @@ const SHOTS = [
   // Nahaufnahme: der Laser zeichnet den Spielball, dann wird er Schicht für Schicht massiv
   { from: 15.8, to: 20.4, pos: [cueCam(2.5, 0.2, R + 0.05), cueCam(1.55, 0.13, R + 0.03)], look: [[CUE_X, R * 0.95, CUE_Z], [CUE_X, R * 0.9, CUE_Z]], fov: 34 },
   // Weite Fahrt, der Tisch entsteht vollständig; endet in der ersten Einstellung des Vorspanns
-  { from: 20.4, to: 25.0, pos: [[3.6, 0.8, 3.6], [Math.sin(0.6) * 3.0, 1.45, Math.cos(0.6) * 3.4]], look: [[0, -0.25, 0], [0, 0, -0.2]], fov: 50, brake: true },
+  // Bahn wie die Kreisfahrt des Vorspanns (Ellipse um den Tisch): Winkel, Halbachsen und Höhe laufen
+  // auf deren Startwerte zu, die Fahrt bremst bis auf das Tempo der Kreisfahrt ab
+  { from: 20.4, to: 25.0, orbit: { a: [-0.35, 0.6], speed: [0.36, ORBIT_SPEED], rx: [3.9, 3.0], rz: [4.3, 3.4], y: [0.75, 1.45] },
+    look: [[0, -0.25, 0], [0, 0, -0.2]], fov: 50 },
 ];
 export const INTRO_DURATION = SHOTS[SHOTS.length - 1].to;
 
@@ -48,8 +52,12 @@ const TRACES = [
 ];
 const BALLS_FROM = 13.8, BALLS_TO = 15.6, BALLS_EMITTER = [1.8, 2.8, -2.6];
 const CUE_DRAW = [16.1, 18.0], CUE_SCAN = [18.1, 19.5], CUE_EMITTER = [CUE_X + 0.6, 1.5, CUE_Z + 1.25];
-const SCAN = [20.8, 23.4];
-const FADE_WIRES = [22.6, 23.8], FADE_GRID = [23.0, 24.4];
+const SCAN = [20.6, 23.8];
+// Danach steigt das Leuchten weiter nach oben aus dem Bild und verblasst dabei
+const SCAN_RISE = [23.8, 24.9], SCAN_TOP = 3.2;
+const FADE_WIRES = [23.3, 24.1], FADE_GRID = [22.8, 24.4];
+// Übergang in die Raumstimmung des Vorspanns: Hintergrundfarbe, Nebel und Boden
+const BLEND = [22.4, 25.0];
 
 // Leuchtpunkt für Laserspitze und Emitter
 function glowTexture() {
@@ -81,6 +89,43 @@ function lineMaterial(color, opacity) {
   return new THREE.LineBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
 }
 
+// Gemeinsame Werte des Scanners für alle Drahtgitter: Höhe der Schnittkante, Scanner aktiv
+const SCAN_U = { uScanH: { value: -10 }, uScanOn: { value: 0 } };
+
+// Drahtgitter, das an der Scanhöhe hell aufleuchtet; darunter (dort ist das Modell schon massiv) verschwindet es
+function wireMaterial(color, opacity) {
+  const u = { uColor: { value: new THREE.Color(color) }, uOpacity: { value: opacity }, ...SCAN_U };
+  const m = new THREE.ShaderMaterial({
+    uniforms: u, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+    vertexShader: `
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      varying float vY;
+      void main() {
+        vec4 w = modelMatrix * vec4(position, 1.0);
+        vY = w.y;
+        gl_Position = projectionMatrix * viewMatrix * w;
+        #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `
+      #include <common>
+      #include <logdepthbuf_pars_fragment>
+      uniform vec3 uColor;
+      uniform float uOpacity, uScanH, uScanOn;
+      varying float vY;
+      void main() {
+        #include <logdepthbuf_fragment>
+        float d = vY - uScanH;
+        float band = exp(-d * d / 0.0006) * uScanOn;
+        float keep = mix(1.0, smoothstep(-0.035, 0.004, d), uScanOn);
+        vec3 c = mix(uColor, vec3(1.0), band * 0.75) * (1.0 + band * 2.5);
+        gl_FragColor = vec4(c, uOpacity * keep + band);
+      }`,
+  });
+  Object.defineProperty(m, 'opacity', { get: () => u.uOpacity.value, set: val => { u.uOpacity.value = val; } });
+  return m;
+}
+
 export class Intro {
   constructor(view) {
     this.view = view;
@@ -96,9 +141,13 @@ export class Intro {
     this.t = 0;
     this.group = new THREE.Group();
     scene.add(this.group);
-    this.saved = { background: scene.background, fog: scene.fog, fov: v.camera.fov, floorOpacity: v.floor.material.opacity, floorTransparent: v.floor.material.transparent };
-    scene.background = new THREE.Color(0x000000);
-    scene.fog = null;
+    // Hintergrund und Nebel werden nur umgestellt, nicht ersetzt: so bauen die Shader am Ende nicht
+    // neu und der Übergang in den Vorspann bleibt ruckelfrei
+    this.saved = { background: scene.background.clone(), fogNear: scene.fog.near, fogFar: scene.fog.far, fov: v.camera.fov };
+    this.black = new THREE.Color(0x000000);
+    scene.background.copy(this.black);
+    scene.fog.near = 1000; scene.fog.far = 2000;
+    SCAN_U.uScanOn.value = 0;
     v.setBalls(balls);
     v.syncBalls(balls, 0);
     v.setCue(false);
@@ -106,18 +155,38 @@ export class Intro {
     v.dArea.visible = false;
     this.ballShadows = [...v.ballShadows.values()].flat();
     for (const sh of this.ballShadows) sh.visible = false;
+    // Boden bleibt dauerhaft transparent (bei voller Deckkraft unsichtbar anders): kein Shader-Neubau am Ende
     v.floor.material.transparent = true;
     v.floor.material.opacity = 0;
-    v.lamps.visible = true;
+    v.floor.material.needsUpdate = true;
+    v.lamps.visible = false; // Lampenschirme über dem Tisch erscheinen im Intro nicht
 
     // Echtes Modell: über eine Schnittebene vollständig ausgeblendet, der Scanner hebt sie später an
     this.plane = new THREE.Plane(new THREE.Vector3(0, -1, 0), SCAN_FROM);
     v.renderer.localClippingEnabled = true;
     const parts = scene.children.filter(o => o.userData.part);
-    const clipped = [...parts, ...v.ballMeshes.values(), v.lamps];
+    const clipped = [...parts, ...v.ballMeshes.values()];
     const mats = new Set();
     for (const o of clipped) o.traverse(m => { if (m.material) mats.add(m.material); });
-    for (const m of mats) { m.clippingPlanes = [this.plane]; m.clipShadows = true; m.needsUpdate = true; }
+    for (const m of mats) {
+      m.clippingPlanes = [this.plane];
+      m.clipShadows = true;
+      // Leuchtband an der Schnittkante: die Oberfläche glüht dort auf, wo das Modell gerade entsteht
+      m.onBeforeCompile = shader => {
+        Object.assign(shader.uniforms, SCAN_U);
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', '#include <common>\nvarying float vScanY;')
+          .replace('#include <begin_vertex>', '#include <begin_vertex>\nvScanY = (modelMatrix * vec4(transformed, 1.0)).y;');
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <common>', '#include <common>\nvarying float vScanY;\nuniform float uScanH, uScanOn;')
+          .replace('#include <dithering_fragment>', `{
+            float d = uScanH - vScanY;
+            gl_FragColor.rgb += vec3(0.45, 0.85, 1.0) * (exp(-d * d / 0.00012) * 2.2 + exp(-d * d / 0.0025) * 0.35) * uScanOn;
+          }
+          #include <dithering_fragment>`);
+      };
+      m.needsUpdate = true;
+    }
     // Der Spielball hat seine eigene Schnittebene: er entsteht schon in der Nahaufnahme
     const cueBall = balls.find(b => b.kind === 'cue');
     this.cuePlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), -0.001);
@@ -129,6 +198,12 @@ export class Intro {
     this.buildCueBall(cueBall);
     this.buildLasers();
     this.buildScanner();
+    // Alle Shader jetzt übersetzen (auch für noch unsichtbare Laser, Kugeln und Scanner), sonst ruckelt
+    // es in dem Moment, in dem sie zum ersten Mal erscheinen
+    const hidden = [];
+    this.group.traverse(o => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+    v.renderer.compile(scene, v.camera);
+    for (const o of hidden) o.visible = false;
   }
 
   // Holodeck: Leuchtgitter auf Boden und Wänden, breitet sich von der Mitte aus
@@ -181,7 +256,7 @@ export class Intro {
         edges.dispose();
       }
       const geo = segmentsGeometry(segs);
-      const lines = new THREE.LineSegments(geo, lineMaterial(WIRE_COLOR, 0.85));
+      const lines = new THREE.LineSegments(geo, wireMaterial(WIRE_COLOR, 0.85));
       lines.frustumCulled = false;
       this.group.add(lines);
       return { ...tr, lines, count: segs.length, pos: geo.attributes.position.array };
@@ -191,7 +266,7 @@ export class Intro {
   // Kugeln als Drahtgitter, nacheinander vom Laser "aufgebaut"
   buildBalls(balls) {
     const geo = new THREE.WireframeGeometry(new THREE.SphereGeometry(R, 14, 10));
-    const mat = lineMaterial(WIRE_COLOR, 0.8);
+    const mat = wireMaterial(WIRE_COLOR, 0.8);
     const order = balls.filter(b => b.kind !== 'cue').sort((a, b) => a.z - b.z);
     this.wireBalls = order.map((b, i) => {
       const m = new THREE.LineSegments(geo, mat);
@@ -216,7 +291,7 @@ export class Intro {
     }
     wire.dispose();
     const geo = segmentsGeometry(segs);
-    this.cueWire = new THREE.LineSegments(geo, lineMaterial(WIRE_COLOR, 0.9));
+    this.cueWire = new THREE.LineSegments(geo, wireMaterial(WIRE_COLOR, 0.9));
     this.cueWire.frustumCulled = false;
     this.group.add(this.cueWire);
     this.cueCount = segs.length;
@@ -306,11 +381,21 @@ export class Intro {
     const i = SHOTS.findIndex(s => t < s.to);
     const shot = SHOTS[i < 0 ? SHOTS.length - 1 : i];
     const x = clamp01((t - shot.from) / (shot.to - shot.from));
-    const u = shot.brake ? 1 - (1 - x) ** 3 : x;
     const cam = v.camera;
-    cam.position.set(...lerp3(shot.pos[0], shot.pos[1], u));
     cam.up.set(0, 1, 0);
-    cam.lookAt(...lerp3(shot.look[0], shot.look[1], u));
+    if (shot.orbit) {
+      // Winkel als Hermite-Kurve: Start- und Endtempo vorgegeben, Ende = Tempo der Kreisfahrt
+      const o = shot.orbit, D = shot.to - shot.from;
+      const x2 = x * x, x3 = x2 * x;
+      const a = (2 * x3 - 3 * x2 + 1) * o.a[0] + (x3 - 2 * x2 + x) * o.speed[0] * D
+        + (-2 * x3 + 3 * x2) * o.a[1] + (x3 - x2) * o.speed[1] * D;
+      const k = 1 - (1 - x) ** 3; // Halbachsen, Höhe und Blickpunkt kommen weich zur Ruhe
+      cam.position.set(Math.sin(a) * lerp(o.rx[0], o.rx[1], k), lerp(o.y[0], o.y[1], k), Math.cos(a) * lerp(o.rz[0], o.rz[1], k));
+      cam.lookAt(...lerp3(shot.look[0], shot.look[1], k));
+    } else {
+      cam.position.set(...lerp3(shot.pos[0], shot.pos[1], x));
+      cam.lookAt(...lerp3(shot.look[0], shot.look[1], x));
+    }
     // Hochformat: Brennweite so anpassen, dass der Bildausschnitt in der Breite erhalten bleibt
     const aspect = innerWidth / innerHeight;
     const hHalf = Math.atan(Math.tan(shot.fov * Math.PI / 360) * 1.6);
@@ -372,16 +457,31 @@ export class Intro {
     for (let k = used; k < this.lasers.length; k++) this.hideLaser(this.lasers[k]);
 
     // Scanner hebt die Schnittebene an: das echte Modell erscheint
-    const s = ease(clamp01((t - SCAN[0]) / (SCAN[1] - SCAN[0])));
-    const h = lerp(SCAN_FROM, SCAN_TO, s);
+    // Höhe: die Beine zügig, dann langsamer durch Zarge, Rahmen, Tuch und Kugeln
+    const s = clamp01((t - SCAN[0]) / (SCAN[1] - SCAN[0]));
+    const TABLE_BASE = -0.27;
+    const h = s < 0.3 ? lerp(SCAN_FROM, TABLE_BASE, ease(s / 0.3) * 0.9 + (s / 0.3) * 0.1)
+      : lerp(TABLE_BASE, SCAN_TO, 1 - (1 - (s - 0.3) / 0.7) ** 2);
     this.plane.constant = h;
-    this.scanner.visible = s > 0 && s < 1;
-    this.scanner.position.y = h;
-    this.scanner.material.opacity = Math.sin(s * Math.PI) * 0.9 + 0.1;
+    SCAN_U.uScanOn.value = s > 0 ? 1 - ease(clamp01((t - SCAN[1]) / 0.6)) : 0;
+    const rise = clamp01((t - SCAN_RISE[0]) / (SCAN_RISE[1] - SCAN_RISE[0]));
+    this.scanner.visible = s > 0 && rise < 1;
+    this.scanner.position.y = lerp(h, SCAN_TOP, rise * rise);
+    this.scanner.material.opacity = Math.min(1, s / 0.1) * (1 - ease(rise));
+    SCAN_U.uScanH.value = this.scanner.position.y; // das Leuchtband auf den Flächen läuft mit nach oben
     for (const sh of this.ballShadows) sh.visible = h > R * 2;
-    v.floor.material.opacity = ease(clamp01((t - FADE_GRID[0]) / (FADE_GRID[1] - FADE_GRID[0])));
+    this.blend(ease(clamp01((t - BLEND[0]) / (BLEND[1] - BLEND[0]))));
 
     if (t >= INTRO_DURATION) this.finish();
+  }
+
+  // Holodeck -> Raum des Vorspanns (e = 0..1): Hintergrundfarbe, Nebel (geometrisch heran) und Boden
+  blend(e) {
+    const v = this.view, scene = v.scene, sv = this.saved;
+    scene.background.lerpColors(this.black, sv.background, e);
+    scene.fog.near = sv.fogNear * (1000 / sv.fogNear) ** (1 - e);
+    scene.fog.far = sv.fogFar * (2000 / sv.fogFar) ** (1 - e);
+    v.floor.material.opacity = e;
   }
 
   // Ende oder Überspringen: alles auf den normalen Zustand zurücksetzen
@@ -393,11 +493,8 @@ export class Intro {
     this.cuePlane.constant = 1e6;
     scene.remove(this.group);
     this.group.traverse(o => { o.geometry?.dispose(); o.material?.map?.dispose(); o.material?.dispose(); });
-    scene.background = this.saved.background;
-    scene.fog = this.saved.fog;
-    v.floor.material.opacity = this.saved.floorOpacity;
-    v.floor.material.transparent = this.saved.floorTransparent;
-    v.floor.material.needsUpdate = true;
+    this.blend(1);
+    SCAN_U.uScanOn.value = 0;
     for (const sh of this.ballShadows) sh.visible = true;
     v.camera.fov = this.saved.fov;
     v.camera.updateProjectionMatrix();
