@@ -1120,21 +1120,6 @@ function setSound(on) {
   try { localStorage.setItem('potblack.sound', on ? '1' : '0'); } catch { /* Speicher nicht verfügbar */ }
 }
 $('btnSound').addEventListener('click', () => { sfx.unlock(); setSound(!sfx.enabled); });
-
-// Sound-Test: jede Aufnahme mit einem typischen Wert für leise / mittel / hart abspielen
-// (dieselben Funktionen wie im Spiel: Stoßstärke, Aufprall- bzw. Einlauftempo in m/s)
-const SOUND_TEST = { cue: [0.15, 0.5, 0.85], ball: [0.4, 1.25, 2.2], pocket: [0.25, 0.8, 1.4] };
-$('btnSoundTest').addEventListener('click', () => { $('soundTest').classList.toggle('hidden'); setOptionsOpen(false); });
-$('soundTestClose').addEventListener('click', () => $('soundTest').classList.add('hidden'));
-for (const b of document.querySelectorAll('#soundTest [data-snd]')) {
-  b.addEventListener('click', () => {
-    sfx.unlock();
-    sfx.frame();
-    const v = SOUND_TEST[b.dataset.snd][+b.dataset.lvl];
-    if (!sfx.enabled) toast('Ton ist aus (Optionen → Ton)');
-    sfx[b.dataset.snd](v);
-  });
-}
 {
   let stored = null;
   try { stored = localStorage.getItem('potblack.sound'); } catch { /* Speicher nicht verfügbar */ }
