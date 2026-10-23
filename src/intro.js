@@ -1,14 +1,17 @@
 // Intro vor dem Startbildschirm: In einem dunklen Holodeck mit Leuchtgitter zeichnen Laserstrahlen
 // nach und nach die Kanten des Tisches, die Markierungen und die Kugeln. Am Ende tastet ein Scanner
-// das echte 3D-Modell (dasselbe wie im Spiel) von unten nach oben ins Bild. Sieben Einstellungen mit
-// harten Schnitten, etwa 20 Sekunden.
+// das echte 3D-Modell (dasselbe wie im Spiel) von unten nach oben ins Bild. Acht Einstellungen mit
+// harten Schnitten, etwa 25 Sekunden.
 import * as THREE from 'three';
-import { BALL_R as R } from './constants.js';
+import { BALL_R as R, BAULK_Z, D_RADIUS } from './constants.js';
 
 const WIRE_COLOR = 0x7fdcff;
 const GRID_COLOR = 0xffb000;
 const FLOOR_Y = -0.86;
 const SCAN_FROM = FLOOR_Y - 0.02, SCAN_TO = 1.26;
+// Spielball (Anstoßposition, wie im Vorspann) und Kamera für die Nahaufnahme, die ihn umkreist
+const CUE_X = D_RADIUS / 2, CUE_Z = BAULK_Z;
+const cueCam = (a, r, y) => [CUE_X + Math.sin(a) * r, y, CUE_Z + Math.cos(a) * r];
 
 const clamp01 = t => Math.max(0, Math.min(1, t));
 const ease = t => t * t * (3 - 2 * t);
@@ -30,8 +33,10 @@ const SHOTS = [
   { from: 11.2, to: 13.6, pos: [[0.6, 1.25, 2.4], [-0.5, 1.3, 2.25]], look: [[0, 0, 0.95], [0, 0, 0.82]], fov: 50 },
   // Flach über dem Tuch am Pack: die Kugeln entstehen
   { from: 13.6, to: 15.8, pos: [[0.52, 0.11, -0.42], [0.34, 0.12, -0.52]], look: [[0, 0.02, -1.0], [-0.03, 0.02, -1.03]], fov: 40 },
+  // Nahaufnahme: der Laser zeichnet den Spielball, dann wird er Schicht für Schicht massiv
+  { from: 15.8, to: 20.4, pos: [cueCam(2.5, 0.2, R + 0.05), cueCam(1.55, 0.13, R + 0.03)], look: [[CUE_X, R * 0.95, CUE_Z], [CUE_X, R * 0.9, CUE_Z]], fov: 34 },
   // Weite Fahrt, der Tisch entsteht vollständig; endet in der ersten Einstellung des Vorspanns
-  { from: 15.8, to: 20.0, pos: [[3.6, 0.8, 3.6], [Math.sin(0.6) * 3.0, 1.45, Math.cos(0.6) * 3.4]], look: [[0, -0.25, 0], [0, 0, -0.2]], fov: 50, brake: true },
+  { from: 20.4, to: 25.0, pos: [[3.6, 0.8, 3.6], [Math.sin(0.6) * 3.0, 1.45, Math.cos(0.6) * 3.4]], look: [[0, -0.25, 0], [0, 0, -0.2]], fov: 50, brake: true },
 ];
 export const INTRO_DURATION = SHOTS[SHOTS.length - 1].to;
 
@@ -42,8 +47,9 @@ const TRACES = [
   { parts: ['cloth', 'marking'], from: 11.3, to: 13.6, order: 'z', emitter: [0, 3.0, 3.4] },
 ];
 const BALLS_FROM = 13.8, BALLS_TO = 15.6, BALLS_EMITTER = [1.8, 2.8, -2.6];
-const SCAN = [16.2, 18.8];
-const FADE_WIRES = [18.0, 19.2], FADE_GRID = [18.4, 19.8];
+const CUE_DRAW = [16.1, 18.0], CUE_SCAN = [18.1, 19.5], CUE_EMITTER = [CUE_X + 0.6, 1.5, CUE_Z + 1.25];
+const SCAN = [20.8, 23.4];
+const FADE_WIRES = [22.6, 23.8], FADE_GRID = [23.0, 24.4];
 
 // Leuchtpunkt für Laserspitze und Emitter
 function glowTexture() {
@@ -112,10 +118,15 @@ export class Intro {
     const mats = new Set();
     for (const o of clipped) o.traverse(m => { if (m.material) mats.add(m.material); });
     for (const m of mats) { m.clippingPlanes = [this.plane]; m.clipShadows = true; m.needsUpdate = true; }
+    // Der Spielball hat seine eigene Schnittebene: er entsteht schon in der Nahaufnahme
+    const cueBall = balls.find(b => b.kind === 'cue');
+    this.cuePlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), -0.001);
+    v.ballMeshes.get(cueBall.id).material.clippingPlanes = [this.cuePlane];
 
     this.buildGrid();
     this.buildTraces(parts);
     this.buildBalls(balls);
+    this.buildCueBall(cueBall);
     this.buildLasers();
     this.buildScanner();
   }
@@ -181,7 +192,7 @@ export class Intro {
   buildBalls(balls) {
     const geo = new THREE.WireframeGeometry(new THREE.SphereGeometry(R, 14, 10));
     const mat = lineMaterial(WIRE_COLOR, 0.8);
-    const order = [...balls].sort((a, b) => a.z - b.z);
+    const order = balls.filter(b => b.kind !== 'cue').sort((a, b) => a.z - b.z);
     this.wireBalls = order.map((b, i) => {
       const m = new THREE.LineSegments(geo, mat);
       m.position.set(b.x, R, b.z);
@@ -190,6 +201,42 @@ export class Intro {
       this.group.add(m);
       return { m, at: BALLS_FROM + (BALLS_TO - BALLS_FROM) * i / order.length };
     });
+  }
+
+  // Spielball in Nahaufnahme: feines Drahtgitter, das der Strahl Meridian für Meridian zeichnet,
+  // dazu ein Leuchtring, der beim Materialisieren an der Schnittkante entlangläuft
+  buildCueBall(b) {
+    const wire = new THREE.WireframeGeometry(new THREE.SphereGeometry(R * 1.004, 28, 18));
+    const a = wire.attributes.position.array, segs = [];
+    for (let i = 0; i < a.length; i += 6) {
+      const x = (a[i] + a[i + 3]) / 2, y = (a[i + 1] + a[i + 4]) / 2, z = (a[i + 2] + a[i + 5]) / 2;
+      const p = Array.from(a.subarray(i, i + 6));
+      for (let k = 0; k < 6; k += 3) { p[k] += b.x; p[k + 1] += R; p[k + 2] += b.z; }
+      segs.push({ p, key: Math.atan2(z, x) - y / R * 0.15 });
+    }
+    wire.dispose();
+    const geo = segmentsGeometry(segs);
+    this.cueWire = new THREE.LineSegments(geo, lineMaterial(WIRE_COLOR, 0.9));
+    this.cueWire.frustumCulled = false;
+    this.group.add(this.cueWire);
+    this.cueCount = segs.length;
+    this.cuePos = geo.attributes.position.array;
+    this.cueBall = b;
+    // Leuchtende Schnittfläche: Kreisscheibe mit hellem Rand (verdeckt das hohle Innere der Kugel)
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const g = c.getContext('2d');
+    const rg = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    rg.addColorStop(0, 'rgba(120,210,255,0.55)');
+    rg.addColorStop(0.82, 'rgba(160,230,255,0.75)');
+    rg.addColorStop(0.9, 'rgba(255,255,255,1)');
+    rg.addColorStop(1, 'rgba(160,230,255,0)');
+    g.fillStyle = rg;
+    g.fillRect(0, 0, 128, 128);
+    this.cueRing = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 2.2).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false, side: THREE.DoubleSide }));
+    this.cueRing.visible = false;
+    this.group.add(this.cueRing);
   }
 
   // Zwei Strahlen (Kern und Glühen) plus Leuchtpunkte an Emitter und Spitze
@@ -207,6 +254,7 @@ export class Intro {
     };
     this.lasers = [mk(), mk()];
     this.tmpV = new THREE.Vector3();
+    this.tmpV2 = new THREE.Vector3();
     this.up = new THREE.Vector3(0, 1, 0);
   }
 
@@ -230,7 +278,9 @@ export class Intro {
   aimLaser(l, from, to, flicker) {
     const v = this.tmpV.set(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
     const len = v.length();
-    for (const [beam, w] of [[l.core, 0.0022], [l.glow, 0.011 * flicker]]) {
+    // In Nahaufnahmen Strahl und Leuchtpunkt schmaler, sonst überstrahlen sie das Bild
+    const near = clamp01(this.view.camera.position.distanceTo(this.tmpV2.set(...to)) / 1.2) * 0.8 + 0.2;
+    for (const [beam, w] of [[l.core, 0.0022 * near], [l.glow, 0.011 * flicker * near]]) {
       beam.visible = true;
       beam.position.set(...from);
       beam.quaternion.setFromUnitVectors(this.up, v.clone().normalize());
@@ -238,7 +288,7 @@ export class Intro {
     }
     l.tip.visible = l.src.visible = true;
     l.tip.position.set(...to);
-    l.tip.scale.setScalar(0.09 * flicker);
+    l.tip.scale.setScalar(0.09 * flicker * near);
     l.src.position.set(...from);
     l.src.scale.setScalar(0.35);
   }
@@ -295,6 +345,30 @@ export class Intro {
     }
     this.wireBalls[0].m.material.opacity = 0.8 * wireFade;
     if (current && used < this.lasers.length) this.aimLaser(this.lasers[used++], BALLS_EMITTER, [current.x, current.y, current.z], flicker);
+
+    // Spielball: erst das Drahtgitter, dann wächst er von unten nach oben massiv heran
+    const cd = clamp01((t - CUE_DRAW[0]) / (CUE_DRAW[1] - CUE_DRAW[0]));
+    const cn = Math.floor(this.cueCount * cd);
+    this.cueWire.geometry.setDrawRange(0, cn * 2);
+    const cs = ease(clamp01((t - CUE_SCAN[0]) / (CUE_SCAN[1] - CUE_SCAN[0])));
+    const ch = lerp(-0.001, 2 * R + 0.002, cs);
+    this.cuePlane.constant = ch;
+    this.cueWire.material.opacity = 0.9 * (1 - ease(clamp01((t - CUE_SCAN[1] + 0.2) / 0.8))) * wireFade;
+    const cb = this.cueBall, ringR = Math.sqrt(Math.max(0, R * R - (ch - R) ** 2));
+    this.cueRing.visible = cs > 0 && cs < 1;
+    this.cueRing.position.set(cb.x, ch, cb.z);
+    this.cueRing.scale.setScalar(Math.max(0.001, ringR * 1.02));
+    this.cueRing.material.opacity = 0.9 * Math.sin(cs * Math.PI);
+    if (used < this.lasers.length) {
+      if (cd > 0 && cd < 1) {
+        const k = Math.max(0, cn - 1) * 6;
+        this.aimLaser(this.lasers[used++], CUE_EMITTER, [this.cuePos[k + 3], this.cuePos[k + 4], this.cuePos[k + 5]], flicker);
+      } else if (cs > 0 && cs < 1) {
+        // Während des Materialisierens wandert der Strahl rasch um die Schnittkante
+        const a = t * 14;
+        this.aimLaser(this.lasers[used++], CUE_EMITTER, [cb.x + Math.cos(a) * ringR, ch, cb.z + Math.sin(a) * ringR], flicker);
+      }
+    }
     for (let k = used; k < this.lasers.length; k++) this.hideLaser(this.lasers[k]);
 
     // Scanner hebt die Schnittebene an: das echte Modell erscheint
@@ -316,6 +390,7 @@ export class Intro {
     this.active = false;
     const v = this.view, scene = v.scene;
     this.plane.constant = 1e6; // Schnittebene bleibt, schneidet aber nichts mehr (kein Shader-Neubau)
+    this.cuePlane.constant = 1e6;
     scene.remove(this.group);
     this.group.traverse(o => { o.geometry?.dispose(); o.material?.map?.dispose(); o.material?.dispose(); });
     scene.background = this.saved.background;
