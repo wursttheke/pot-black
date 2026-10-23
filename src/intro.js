@@ -1,6 +1,6 @@
 // Intro vor dem Startbildschirm: In einem dunklen Holodeck mit Leuchtgitter zeichnen Laserstrahlen
 // nach und nach die Kanten des Tisches, die Markierungen und die Kugeln. Am Ende tastet ein Scanner
-// das echte 3D-Modell (dasselbe wie im Spiel) von unten nach oben ins Bild. Acht Einstellungen mit
+// das echte 3D-Modell (dasselbe wie im Spiel) von unten nach oben ins Bild. Sieben Einstellungen mit
 // harten Schnitten, etwa 20 Sekunden.
 import * as THREE from 'three';
 import { BALL_R as R } from './constants.js';
@@ -25,9 +25,7 @@ const SHOTS = [
   // Seitlich auf Tischhöhe entlang der langen Bande
   { from: 5.0, to: 7.4, pos: [[2.0, 0.06, 2.0], [2.0, 0.1, -0.5]], look: [[0.9, -0.12, 0.7], [0.9, -0.12, -1.7]], fov: 46 },
   // Ecktasche von nahem
-  { from: 7.4, to: 9.4, pos: [[1.6, 0.2, 2.55], [1.22, 0.25, 2.8]], look: [[0.75, -0.06, 1.55], [0.58, -0.05, 1.62]], fov: 46 },
-  // Mitteltasche auf der anderen Seite
-  { from: 9.4, to: 11.2, pos: [[-1.5, 0.15, 0.62], [-1.5, 0.18, -0.5]], look: [[-0.86, -0.03, 0.12], [-0.86, -0.03, -0.12]], fov: 44 },
+  { from: 7.4, to: 11.2, pos: [[1.75, 0.19, 2.45], [1.05, 0.27, 2.9]], look: [[0.8, -0.06, 1.52], [0.5, -0.05, 1.65]], fov: 46 },
   // Von oben über den Baulk-Bereich: Linien und D
   { from: 11.2, to: 13.6, pos: [[0.6, 1.25, 2.4], [-0.5, 1.3, 2.25]], look: [[0, 0, 0.95], [0, 0, 0.82]], fov: 50 },
   // Flach über dem Tuch am Pack: die Kugeln entstehen

@@ -23,7 +23,7 @@ const canvas = view.canvas;
 const LINE_MODES = ['aus', 'kurz', 'voll'];
 const st = {
   mode: 'menu', aim: 0, power: 0.35, tipX: 0, tipY: 0, wantX: 0, wantY: 0, minTipY: -MAX_TIP, elev: 0.07,
-  camMode: 'fp', prevCam: 'fp', lines: 2, ghosts: true, camH: 0.16,
+  camMode: 'fp', prevCam: 'fp', lines: 2, ghosts: true, camH: 0.26,
   shotCam: null, predDirty: true, predAt: 0,
   shotT: 0, shot: null, simAcc: 0, strikePos: null, moveT: 0, travel: null,
   frames: [0, 0], names: ['Spieler 1', 'Spieler 2'], starter: 0,
@@ -692,7 +692,9 @@ function cameraTarget() {
   const cueH = R * st.tipY + dist * Math.tan(st.elev) + 0.07;
   if (h < cueH) { h = cueH; dist = 0.38 + h * 0.6; }
   tPos.set(cue.x - dx * dist, R + h, cue.z - dz * dist);
-  const ahead = 0.9 + st.camH * 0.8;
+  // Blickpunkt nah vor der Weißen: die Kamera neigt sich nach unten, der Tisch füllt mehr vom Bild.
+  // Im Hochformat (viel Bildhöhe) noch etwas steiler, damit oben kein leerer Raum bleibt.
+  const ahead = 0.3 + st.camH * 0.25 - (1 - Math.min(1, innerWidth / innerHeight)) * 0.5;
   tLook.set(cue.x + dx * ahead, 0, cue.z + dz * ahead);
   tUp.set(0, 1, 0);
 }
