@@ -150,6 +150,15 @@ export class Frame {
 
   endBreak() { this.breakPts = 0; }
 
+  // Ein Spieler gibt das Frame auf: der Gegner gewinnt unabhängig vom Spielstand
+  concede(player) {
+    this.over = true;
+    this.winner = 1 - player;
+    this.endBreak();
+    return { frameOver: true, conceded: true, foul: false, points: 0,
+      messages: [`${this.names[player]} gibt das Frame auf – ${this.names[this.winner]} gewinnt (${this.scores[0]}:${this.scores[1]})`] };
+  }
+
   finish(out) {
     this.over = true;
     this.winner = this.scores[0] > this.scores[1] ? 0 : 1;

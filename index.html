@@ -10,6 +10,9 @@
   :root { --fg: #f3efe4; --muted: #a9a59a; --panel: rgba(12, 14, 18, 0.78); --accent: #e8b84a; --line: rgba(255,255,255,0.12); }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #0a0b0e; color: var(--fg); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  /* Kein Markieren von Text und kein Kontextmenü beim langen Tippen (stört vor allem auf Mobilgeräten) */
+  body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  input, textarea { -webkit-user-select: text; user-select: text; }
   #app canvas { display: block; touch-action: none; cursor: crosshair; }
   .hidden { display: none !important; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(6px); }
@@ -35,14 +38,16 @@
   #status { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); padding: 6px 14px; color: var(--muted); font-size: 13px; }
 
   /* Stoßstärke */
-  #powerBox { position: fixed; left: 16px; bottom: 16px; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
-  #power { width: 34px; height: 200px; border-radius: 6px; background: #1b1e24; border: 1px solid var(--line); position: relative; overflow: hidden; cursor: ns-resize; touch-action: none; }
+  /* Stärke und Treffpunkt nebeneinander unten rechts – beides mit einer Hand erreichbar */
+  #controls { position: fixed; right: 16px; bottom: 16px; display: flex; gap: 8px; align-items: stretch; }
+  #powerBox { padding: 10px 12px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  #power { width: 34px; flex: 1; min-height: 120px; border-radius: 6px; background: #1b1e24; border: 1px solid var(--line); position: relative; overflow: hidden; cursor: ns-resize; touch-action: none; }
   #powerFill { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(0deg, #3fae5a, #e8b84a 60%, #d9483b); }
   #powerVal { font-weight: 700; font-variant-numeric: tabular-nums; }
   .lbl { font-size: 11px; color: var(--muted); }
 
   /* Treffpunkt */
-  #spinBox { position: fixed; right: 16px; bottom: 16px; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  #spinBox { padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
   #spin { width: 150px; height: 150px; cursor: pointer; touch-action: none; }
 
   #tools { position: fixed; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 6px; align-items: stretch; z-index: 6; }
@@ -148,7 +153,25 @@
 
   @media (max-width: 760px) {
     .player { min-width: 0; padding: 6px 10px; } .player .score { font-size: 20px; }
-    #mid { display: none; } #spin { width: 110px; height: 110px; } #power { height: 140px; }
+    #mid { display: none; } #spin { width: 96px; height: 96px; } #power { min-height: 90px; width: 28px; }
+    #controls { right: 10px; bottom: 10px; gap: 6px; }
+    #status { bottom: 172px; left: auto; right: 10px; transform: none; max-width: calc(100vw - 20px); font-size: 12px; }
+    /* Oben: Anzeigetafel über die volle Breite, darunter die Buttons in einer Reihe, darunter Einblendungen */
+    #board { left: 10px; right: 10px; top: 10px; transform: none; }
+    .player { flex: 1; }
+    .player .name { max-width: 90px; }
+    #tools { top: 64px; left: 10px; right: 10px; flex-direction: row; gap: 6px; }
+    #tools > button, #tools > .dropdown { flex: 1; min-width: 0; }
+    #tools button { padding: 7px 6px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #msg { top: 108px; max-width: calc(100vw - 20px); font-size: 12px; }
+    /* Unten: Stärke links, Stoß mittig, Treffpunkt rechts; der Stoß-Button übernimmt auch das Platzieren */
+    #controls { left: 10px; justify-content: space-between; pointer-events: none; }
+    #controls > * { pointer-events: auto; }
+    #tools #btnShoot { position: fixed; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 6;
+      width: 100px; height: 56px; padding: 0 10px; font-size: 16px; }
+    #btnPlace { display: none; }
+    /* Keine Tastatur-Hinweise */
+    #help, #btnHelp, .kbd-only { display: none !important; }
   }
 </style>
 <script type="importmap">
@@ -177,6 +200,7 @@
   <div id="status" class="panel"></div>
   <button id="btnPlace" class="hidden">Platzieren</button>
 
+  <div id="controls">
   <div id="powerBox" class="panel">
     <span class="lbl">Stärke</span>
     <div id="power"><div id="powerFill"></div></div>
@@ -186,6 +210,7 @@
   <div id="spinBox" class="panel">
     <span class="lbl">Treffpunkt</span>
     <canvas id="spin" width="300" height="300"></canvas>
+  </div>
   </div>
 
   <div id="tools">
@@ -284,7 +309,7 @@
     </div>
 
     <button id="start">Frame starten</button>
-    <p class="hint">Weiße im D platzieren · zielen aus der Spielerperspektive · Stärke und Treffpunkt wählen · Leertaste stößt</p>
+    <p class="hint">Weiße im D platzieren · zielen aus der Spielerperspektive · Stärke und Treffpunkt wählen<span class="kbd-only"> · Leertaste stößt</span></p>
   </div>
 </div>
 

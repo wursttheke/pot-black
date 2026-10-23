@@ -112,6 +112,17 @@ function simulate(balls, frame, aim, power, tipX, tipY) {
   return { sim, out, f };
 }
 
+// Wie viele Snooker braucht `me` noch, um das Frame zu gewinnen? (0 = es reicht ohne Fouls des Gegners)
+// Ein Snooker bringt so viele Strafpunkte wie das Foul des Gegners: mindestens 4, bei Farben deren Wert.
+export function snookersNeeded(frame, balls, me) {
+  const behind = frame.scores[1 - me] - frame.scores[me];
+  const remaining = frame.pointsRemaining(balls);
+  if (behind <= remaining) return 0; // Gleichstand reicht (Re-Black)
+  const onValue = frame.on === 'red' || frame.on === 'colour' ? 4
+    : Math.max(4, ({ yellow: 2, green: 3, brown: 4, blue: 5, pink: 6, black: 7 })[frame.on]);
+  return Math.ceil((behind - remaining) / onValue);
+}
+
 // Bewertung eines Ergebnisses aus Sicht des Stoßenden (in Punkten)
 function scoreResult(r, cfg, me) {
   const { sim, out, f } = r;
@@ -120,14 +131,15 @@ function scoreResult(r, cfg, me) {
   if (out.foul) return -out.penalty - 4 - nextValue(cue, sim, f, cfg.selfSigma);
   if (out.points > 0) return out.points + cfg.posWeight * nextValue(cue, sim, f, cfg.selfSigma);
   // Gegner ist am Tisch: sein bester nächster Lochversuch zählt gegen uns
-  const snookered = isSnookered(cue, sim, ballsOnFn(f)) ? 3 : 0;
+  const snookered = isSnookered(cue, sim, ballsOnFn(f)) ? cfg.snookerBonus : 0;
   return -nextValue(cue, sim, f, cfg.selfSigma) + snookered;
 }
 
 // Denkt über den nächsten Stoß nach. Generator: gibt nach jeder Simulation die Kontrolle ab,
 // damit das Spiel flüssig bleibt. Ergebnis: { aim, power, tipX, tipY, kind, ball }
-export function* thinkShot(balls, frame, levelKey) {
-  const cfg = AI_LEVELS[levelKey];
+// snookerMode: der Computer braucht einen Snooker und versucht, die Weiße zu verstecken
+export function* thinkShot(balls, frame, levelKey, snookerMode = false) {
+  const cfg = { ...AI_LEVELS[levelKey], snookerBonus: snookerMode ? 18 : 3 };
   const cue = balls[0];
   const me = frame.current;
   const isOn = ballsOnFn(frame);

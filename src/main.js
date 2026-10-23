@@ -8,7 +8,7 @@ import { rackBalls, respot, freeSpotInD, isSnookered, minTipY, cueElevation } fr
 import { Frame, ballLabel } from './rules.js';
 import { planNextShot } from './planner.js';
 import { Celebration, celebrationFor } from './celebrate.js';
-import { AI_LEVELS, thinkShot, withNoise, choosePlacement } from './ai.js';
+import { AI_LEVELS, thinkShot, withNoise, choosePlacement, snookersNeeded } from './ai.js';
 import { Attract } from './attract.js';
 import { Net } from './net.js';
 
@@ -42,6 +42,7 @@ function newFrame() {
   st.tipX = st.tipY = st.wantX = st.wantY = 0;
   hideOverlay();
   st.aiBusy = false; st.aiToken++;
+  st.aiSnookerHint = false;
   startPlacing();
   aimAtPoint(0.03, balls[1].z);
   toast(inputLocked() ? `${st.names[frame.current]} hat Anstoß` : `${st.names[frame.current]} hat Anstoß – Weiße im D platzieren`);
@@ -267,13 +268,27 @@ function maybeStartAi() {
 }
 
 function runAi(token) {
+  // Liegen nicht mehr genug Punkte auf dem Tisch: bei mehr als einem nötigen Snooker gibt der
+  // Computer auf, bei genau einem spielt er darauf, die Weiße zu verstecken
+  const need = snookersNeeded(frame, balls, st.aiPlayer);
+  if (need > 1) {
+    st.aiBusy = false;
+    const out = frame.concede(st.aiPlayer);
+    st.frames[frame.winner]++;
+    presentOutcome(out, null);
+    return;
+  }
+  if (need === 1 && !st.aiSnookerHint) {
+    st.aiSnookerHint = true;
+    toast(`${frame.names[st.aiPlayer]} braucht einen Snooker und spielt auf Sicherheit`);
+  }
   if (st.mode === 'place') {
     const [x, z] = choosePlacement(balls, frame, st.aiLevel);
     Object.assign(cue, { x, z });
     confirmPlacement();
   }
   // Nachdenken in kleinen Häppchen, damit Darstellung und Kamera flüssig bleiben
-  const gen = thinkShot(balls, frame, st.aiLevel);
+  const gen = thinkShot(balls, frame, st.aiLevel, need === 1);
   const pump = () => {
     if (token !== st.aiToken) return;
     const t0 = performance.now();
@@ -684,9 +699,9 @@ function topViewFit() {
   const rect = id => { const e = $(id); if (!e || e.classList.contains('hidden') || !e.offsetParent && getComputedStyle(e).position !== 'fixed') return null; const r = e.getBoundingClientRect(); return r.width && r.height ? r : null; };
   const hudOn = !$('hud').classList.contains('hidden');
   const topEls = hudOn ? ['board', 'tools'].map(rect).filter(Boolean) : [];
-  const bottomEls = hudOn ? ['powerBox', 'spinBox', 'status', 'btnPlace'].map(rect).filter(Boolean) : [];
-  const leftEls = hudOn ? ['powerBox'].map(rect).filter(Boolean) : [];
-  const rightEls = hudOn ? ['tools', 'spinBox'].map(rect).filter(Boolean) : [];
+  const bottomEls = hudOn ? ['controls', 'status', 'btnPlace', 'btnShoot'].map(rect).filter(Boolean) : [];
+  const leftEls = [];
+  const rightEls = hudOn ? ['tools', 'controls'].map(rect).filter(Boolean) : [];
   const areas = [];
   // Band zwischen oben und unten, volle Breite
   {
@@ -971,10 +986,19 @@ $('btnGhost').addEventListener('click', () => dispatchEvent(new KeyboardEvent('k
 $('btnHelp').addEventListener('click', () => setHelp($('help').classList.contains('hidden')));
 $('helpClose').addEventListener('click', () => setHelp(false));
 
+// Auf dem Handy (gleiche Grenze wie im CSS) entfallen alle Hinweise auf Tasten
+function isMobile() { return matchMedia('(max-width: 760px)').matches; }
+function keyHint(k) { return isMobile() ? '' : ` (${k})`; }
+matchMedia('(max-width: 760px)').addEventListener('change', () => {
+  setHelp(!$('help').classList.contains('hidden'));
+  setSound(sfx.enabled);
+  if (frame) updateHud();
+});
+
 // Steuerungs-Legende ein-/ausblenden; Einstellung bleibt im Browser gespeichert
 function setHelp(visible) {
   $('help').classList.toggle('hidden', !visible);
-  $('btnHelp').textContent = `Steuerung: ${visible ? 'an' : 'aus'} (T)`;
+  $('btnHelp').textContent = `Steuerung: ${visible ? 'an' : 'aus'}${keyHint('T')}`;
   $('btnHelp').classList.toggle('on', visible);
   try { localStorage.setItem('potblack.help', visible ? '1' : '0'); } catch { /* Speicher nicht verfügbar */ }
 }
@@ -1014,7 +1038,7 @@ $('btnLeave').addEventListener('click', confirmLeave);
 // Ton ein/aus; Einstellung bleibt im Browser gespeichert
 function setSound(on) {
   sfx.enabled = on;
-  $('btnSound').textContent = `Ton: ${on ? 'an' : 'aus'} (M)`;
+  $('btnSound').textContent = `Ton: ${on ? 'an' : 'aus'}${keyHint('M')}`;
   $('btnSound').classList.toggle('on', on);
   try { localStorage.setItem('potblack.sound', on ? '1' : '0'); } catch { /* Speicher nicht verfügbar */ }
 }
@@ -1106,11 +1130,11 @@ function updateHud() {
   $('remain').textContent = remain + (diff > remain ? ' · Snooker nötig' : '');
   $('powerFill').style.height = `${st.power * 100}%`;
   $('powerVal').textContent = `${Math.round(st.power * 100)} %`;
-  $('btnView').textContent = st.camMode === 'fp' ? 'Ansicht: Spieler (V)' : 'Ansicht: Draufsicht (V)';
-  $('btnLines').textContent = `Linien: ${LINE_MODES[st.lines]} (H)`;
-  $('btnGhost').textContent = `Geisterball: ${st.ghosts ? 'an' : 'aus'} (G)`;
+  $('btnView').textContent = (st.camMode === 'fp' ? 'Ansicht: Spieler' : 'Ansicht: Draufsicht') + keyHint('V');
+  $('btnLines').textContent = `Linien: ${LINE_MODES[st.lines]}${keyHint('H')}`;
+  $('btnGhost').textContent = `Geisterball: ${st.ghosts ? 'an' : 'aus'}${keyHint('G')}`;
   $('btnGhost').classList.toggle('on', st.ghosts);
-  $('btnShoot').textContent = st.mode === 'place' ? 'Platzieren' : 'Stoß (Leertaste)';
+  $('btnShoot').textContent = st.mode === 'place' ? 'Platzieren' : 'Stoß' + keyHint('Leertaste');
   const ai = inputLocked();
   $('btnShoot').disabled = ai || !(st.mode === 'aim' || st.mode === 'place');
   $('btnPlace').classList.toggle('hidden', st.mode !== 'place' || ai);
@@ -1122,8 +1146,9 @@ function updateHud() {
     return;
   }
   $('status').textContent = watching + ({
-    place: 'Weiße im D platzieren: ziehen zum Verschieben, Klick oder Leertaste zum Bestätigen',
-    aim: frame.ballInHand ? 'Zielen · P = Weiße neu platzieren' : 'Zielen',
+    place: isMobile() ? 'Weiße im D platzieren: ziehen zum Verschieben, tippen zum Bestätigen'
+      : 'Weiße im D platzieren: ziehen zum Verschieben, Klick oder Leertaste zum Bestätigen',
+    aim: frame.ballInHand && !isMobile() ? 'Zielen · P = Weiße neu platzieren' : 'Zielen',
     shooting: 'Stoß…', moving: 'Kugeln laufen…', waiting: 'Warte auf das Ergebnis…',
     decision: 'Entscheidung nach Foul', over: 'Frame beendet',
   }[st.mode] || '');
