@@ -466,6 +466,7 @@ export class View {
       new THREE.MeshStandardMaterial({ color: 0x0f3a1c, roughness: 0.95 }));
     slate.rotation.x = -Math.PI / 2;
     slate.position.y = -0.045; // Oberseite 3 mm unter dem Tuch
+    slate.castShadow = true; // füllt den Schatten unter der Spielfläche (sonst werfen nur Rahmen und Banden einen)
     s.add(part(slate, 'slate'));
 
     // Markierungen: Baulk-Linie, D, Spots

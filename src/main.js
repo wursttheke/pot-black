@@ -948,10 +948,15 @@ addEventListener('keydown', e => {
   e.preventDefault();
 });
 
-// Treffpunkt-Widget
-const spin = $('spin'), sctx = spin.getContext('2d');
+// Treffpunkt-Widget (dieselbe Zeichnung auch vergrößert in der Lupe beim Ziehen mit dem Finger)
+const spin = $('spin');
 function drawSpin() {
-  const s = spin.width, c = s / 2, r = s * 0.42;
+  paintSpin(spin);
+  if (loupe.kind === 'spin') paintSpin(loupe.canvas);
+}
+function paintSpin(cv) {
+  const sctx = cv.getContext('2d');
+  const s = cv.width, c = s / 2, r = s * 0.42;
   sctx.clearRect(0, 0, s, s);
   const g = sctx.createRadialGradient(c - r * 0.3, c - r * 0.35, r * 0.1, c, c, r);
   g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#c9c4b4');
@@ -977,25 +982,62 @@ function drawSpin() {
   sctx.beginPath(); sctx.arc(c + st.tipX * r, c - st.tipY * r, s * 0.045, 0, Math.PI * 2); sctx.fill();
   sctx.strokeStyle = '#fff'; sctx.lineWidth = 2; sctx.stroke();
 }
-let spinDrag = false;
+// Mit der Maus wird der Wert direkt an die Zeigerposition gesetzt. Mit dem Finger (der den Punkt
+// verdeckt) wird relativ und feiner gezogen: der Wert folgt der Fingerbewegung, egal wo man aufsetzt,
+// und eine vergrößerte Vorschau über dem Regler zeigt, was man einstellt.
+const TOUCH_GAIN_SPIN = 0.6, TOUCH_GAIN_POWER = 0.7;
+const loupe = { el: $('loupe'), canvas: $('loupeSpin'), kind: null };
+function showLoupe(kind, anchor) {
+  loupe.kind = kind;
+  loupe.el.className = `panel on ${kind}`;
+  if (kind === 'spin') paintSpin(loupe.canvas); else updatePowerLoupe();
+  const a = anchor.getBoundingClientRect(), w = loupe.el.offsetWidth, h = loupe.el.offsetHeight;
+  loupe.el.style.left = `${THREE.MathUtils.clamp(a.left + a.width / 2 - w / 2, 8, innerWidth - w - 8)}px`;
+  loupe.el.style.top = `${Math.max(8, a.top - h - 14)}px`;
+}
+function hideLoupe() { loupe.kind = null; loupe.el.className = 'panel'; }
+function updatePowerLoupe() {
+  if (loupe.kind !== 'power') return;
+  $('loupeVal').textContent = `${Math.round(st.power * 100)} %`;
+  $('loupeBar').style.width = `${st.power * 100}%`;
+}
+
+let spinDrag = null;
 const spinFromEvent = e => {
   const b = spin.getBoundingClientRect(), r = b.width * 0.42;
-  setTip((e.clientX - b.left - b.width / 2) / r, -(e.clientY - b.top - b.height / 2) / r);
+  if (!spinDrag.touch) {
+    setTip((e.clientX - b.left - b.width / 2) / r, -(e.clientY - b.top - b.height / 2) / r);
+    return;
+  }
+  const k = TOUCH_GAIN_SPIN / r;
+  setTip(spinDrag.x + (e.clientX - spinDrag.px) * k, spinDrag.y - (e.clientY - spinDrag.py) * k);
 };
-spin.addEventListener('pointerdown', e => { if (inputLocked()) return; spinDrag = true; spin.setPointerCapture(e.pointerId); spinFromEvent(e); });
+spin.addEventListener('pointerdown', e => {
+  if (inputLocked()) return;
+  spinDrag = { touch: e.pointerType !== 'mouse', px: e.clientX, py: e.clientY, x: st.wantX, y: st.wantY };
+  try { spin.setPointerCapture(e.pointerId); } catch { /* kein aktiver Zeiger */ }
+  if (spinDrag.touch) showLoupe('spin', spin); else spinFromEvent(e);
+});
 spin.addEventListener('pointermove', e => { if (spinDrag) spinFromEvent(e); });
-spin.addEventListener('pointerup', () => { spinDrag = false; });
+for (const type of ['pointerup', 'pointercancel']) spin.addEventListener(type, () => { spinDrag = null; hideLoupe(); });
 spin.addEventListener('dblclick', () => setTip(0, 0));
 
 const powerBar = $('power');
-let powerDrag = false;
+let powerDrag = null;
 const powerFromEvent = e => {
   const b = powerBar.getBoundingClientRect();
-  setPower(1 - (e.clientY - b.top) / b.height);
+  if (!powerDrag.touch) setPower(1 - (e.clientY - b.top) / b.height);
+  else setPower(powerDrag.p - (e.clientY - powerDrag.py) / b.height * TOUCH_GAIN_POWER);
+  updatePowerLoupe();
 };
-powerBar.addEventListener('pointerdown', e => { if (inputLocked()) return; powerDrag = true; powerBar.setPointerCapture(e.pointerId); powerFromEvent(e); });
+powerBar.addEventListener('pointerdown', e => {
+  if (inputLocked()) return;
+  powerDrag = { touch: e.pointerType !== 'mouse', py: e.clientY, p: st.power };
+  try { powerBar.setPointerCapture(e.pointerId); } catch { /* kein aktiver Zeiger */ }
+  if (powerDrag.touch) showLoupe('power', $('powerBox')); else powerFromEvent(e);
+});
 powerBar.addEventListener('pointermove', e => { if (powerDrag) powerFromEvent(e); });
-powerBar.addEventListener('pointerup', () => { powerDrag = false; });
+for (const type of ['pointerup', 'pointercancel']) powerBar.addEventListener(type, () => { powerDrag = null; hideLoupe(); });
 
 $('btnPlace').addEventListener('click', () => { sfx.unlock(); if (st.mode === 'place' && !inputLocked()) confirmPlacement(); });
 $('btnShoot').addEventListener('click', () => { sfx.unlock(); if (inputLocked()) return; if (st.mode === 'place') confirmPlacement(); else shoot(); });

@@ -65,6 +65,17 @@
   /* Treffpunkt */
   #spinBox { padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
   #spin { width: 150px; height: 150px; cursor: pointer; touch-action: none; }
+  /* Lupe beim Ziehen mit dem Finger: vergrößerter Treffpunkt bzw. Stärke über dem Regler */
+  #loupe { position: fixed; z-index: 30; display: none; padding: 10px; border-radius: 16px; pointer-events: none;
+    background: rgba(12,14,18,.9); box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+  #loupe.on { display: block; }
+  #loupeSpin { display: none; width: 180px; height: 180px; }
+  #loupe.spin #loupeSpin { display: block; }
+  #loupePower { display: none; width: 150px; padding: 4px 6px 8px; text-align: center; }
+  #loupe.power #loupePower { display: block; }
+  #loupeVal { font-size: 38px; font-weight: 800; font-variant-numeric: tabular-nums; color: #fff; }
+  #loupePower .track { height: 10px; margin-top: 6px; border-radius: 5px; background: #1b1e24; border: 1px solid var(--line); overflow: hidden; }
+  #loupeBar { display: block; height: 100%; background: linear-gradient(90deg, #3fae5a, #e8b84a 60%, #d9483b); }
 
   #tools { position: fixed; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 6px; align-items: stretch; z-index: 6; }
   .dropdown { position: relative; display: flex; flex-direction: column; }
@@ -319,6 +330,11 @@
 </div>
 
 <button id="skipIntro" class="hidden">Intro überspringen ›</button>
+<!-- Vorschau beim Einstellen mit dem Finger (Treffpunkt bzw. Stärke) -->
+<div id="loupe" class="panel" aria-hidden="true">
+  <canvas id="loupeSpin" width="360" height="360"></canvas>
+  <div id="loupePower"><div id="loupeVal">35 %</div><div class="track"><i id="loupeBar"></i></div></div>
+</div>
 <div id="menu" class="modal intro-wait">
   <div class="panel start">
     <header class="brand">
