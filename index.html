@@ -66,6 +66,13 @@
   #spinBox { padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
   #spin { width: 150px; height: 150px; cursor: pointer; touch-action: none; }
   /* Lupe beim Ziehen mit dem Finger: vergrößerter Treffpunkt bzw. Stärke über dem Regler */
+  #soundTest { position: fixed; left: 12px; top: 50%; transform: translateY(-50%); z-index: 20; padding: 10px 12px; font-size: 12px; }
+  #soundTest .st-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+  #soundTest .st-head button { padding: 0 8px; background: transparent; border-color: transparent; color: var(--muted); font-size: 16px; }
+  #soundTest .st-grid { display: grid; grid-template-columns: auto repeat(3, 44px); gap: 6px; align-items: center; text-align: center; }
+  #soundTest .st-grid span:nth-child(4n + 1) { text-align: left; padding-right: 4px; }
+  #soundTest .st-grid span { color: var(--muted); }
+  #soundTest .st-grid button { padding: 6px 0; }
   #loupe { position: fixed; z-index: 30; display: none; padding: 10px; border-radius: 16px; pointer-events: none;
     background: rgba(12,14,18,.9); box-shadow: 0 10px 30px rgba(0,0,0,.5); }
   #loupe.on { display: block; }
@@ -303,6 +310,7 @@
         <button id="btnGhost" role="menuitem">Geisterball</button>
         <button id="btnSound" role="menuitem">Ton</button>
         <button id="btnHelp" role="menuitem">Steuerung (F1)</button>
+        <button id="btnSoundTest" role="menuitem">Sound-Test</button>
       </div>
     </div>
   </div>
@@ -334,6 +342,16 @@
 <div id="loupe" class="panel" aria-hidden="true">
   <canvas id="loupeSpin" width="360" height="360"></canvas>
   <div id="loupePower"><div id="loupeVal">35 %</div><div class="track"><i id="loupeBar"></i></div></div>
+</div>
+<!-- Sound-Test: jede Aufnahme einzeln abspielen (über Optionen ein-/ausblenden) -->
+<div id="soundTest" class="panel hidden">
+  <div class="st-head"><b>Sound-Test</b><button id="soundTestClose" aria-label="Sound-Test schließen">×</button></div>
+  <div class="st-grid">
+    <span></span><span>leise</span><span>mittel</span><span>hart</span>
+    <span>Stoß</span><button data-snd="cue" data-lvl="0">▶</button><button data-snd="cue" data-lvl="1">▶</button><button data-snd="cue" data-lvl="2">▶</button>
+    <span>Kugel</span><button data-snd="ball" data-lvl="0">▶</button><button data-snd="ball" data-lvl="1">▶</button><button data-snd="ball" data-lvl="2">▶</button>
+    <span>Tasche</span><button data-snd="pocket" data-lvl="0">▶</button><button data-snd="pocket" data-lvl="1">▶</button><button data-snd="pocket" data-lvl="2">▶</button>
+  </div>
 </div>
 <div id="menu" class="modal intro-wait">
   <div class="panel start">

@@ -21,6 +21,7 @@ const TYPES = {
   '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  '.wav': 'audio/wav',
 };
 
 function origin(req) {
