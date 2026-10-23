@@ -161,6 +161,7 @@ export class Intro {
     v.floor.material.opacity = 0;
     v.floor.material.needsUpdate = true;
     v.lamps.visible = false; // Lampenschirme über dem Tisch erscheinen im Intro nicht
+    v.pub.setFade(0);        // der Pub blendet erst am Ende mit dem Raum ein
 
     // Echtes Modell: über eine Schnittebene vollständig ausgeblendet, der Scanner hebt sie später an
     this.plane = new THREE.Plane(new THREE.Vector3(0, -1, 0), SCAN_FROM);
@@ -510,6 +511,7 @@ export class Intro {
     scene.fog.near = sv.fogNear * (1000 / sv.fogNear) ** (1 - e);
     scene.fog.far = sv.fogFar * (2000 / sv.fogFar) ** (1 - e);
     v.floor.material.opacity = e;
+    v.pub.setFade(e);
   }
 
   // Ende oder Überspringen: alles auf den normalen Zustand zurücksetzen

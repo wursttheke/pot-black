@@ -7,6 +7,7 @@ import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { BALL_R as R, TABLE_L, TABLE_W, BAULK_Z, D_RADIUS, COLOURS, RED_COLOR, MAX_TIP,
   CUSHION_HEIGHT as CUSHION_H, CUSHION_WIDTH as CUSHION_W, RAIL_HEIGHT as RAIL_H, RAIL_WIDTH as RAIL_W } from './constants.js';
 import { CUSHION_PATHS, POCKETS } from './physics.js';
+import { buildPub } from './pub.js';
 
 const HW = TABLE_W / 2, HL = TABLE_L / 2;
 const FLOOR_Y = -0.86;
@@ -443,8 +444,10 @@ export class View {
   }
 
   buildRoom() {
+    // Pub rund um den Tisch (Wände, Theke, Leuchten); der Boden bekommt dessen Dielen
+    this.pub = buildPub(this.scene, this.envMap);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30),
-      new THREE.MeshStandardMaterial({ color: 0x2a1d17, roughness: 0.9 }));
+      new THREE.MeshStandardMaterial({ map: this.pub.floorMap, color: 0xb8a89a, roughness: 0.85 }));
     floor.rotation.x = -Math.PI / 2;
     floor.position.y = -0.86;
     floor.receiveShadow = true;
@@ -840,7 +843,7 @@ export class View {
       // [Länge, Radius vorne, Radius hinten, Farbe, Rauheit]
       [0.006, 0.0047, 0.0047, 0x2a6fd6, 0.9],   // Leder mit Kreide
       [0.016, 0.0048, 0.0049, 0xf2eee0, 0.3],   // Ferrule
-      [0.98, 0.0049, 0.0105, 0xd9b77a, 0.45],   // Esche-Schaft
+      [0.98, 0.0049, 0.0105, 0x9c7744, 0.45],   // Esche-Schaft
       [0.04, 0.0105, 0.011, 0x1a1a1a, 0.3],     // Spleiß-Ring
       [0.42, 0.011, 0.0145, 0x2b120a, 0.35],    // Ebenholz-Griff
       [0.012, 0.0145, 0.0145, 0x111111, 0.5],   // Endkappe
@@ -999,6 +1002,7 @@ export class View {
 
   // Zeichnet nur, wenn sich seit dem letzten Bild etwas geändert hat; ein ruhender Tisch kostet so fast nichts
   render() {
+    this.pub.update(this.camera);
     const cueEnd = this.signature();
     const s = this.sig, last = this.lastSig;
     let changed = this.dirty || s.length !== last.length, cueChanged = changed;
