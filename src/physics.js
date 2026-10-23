@@ -1,6 +1,6 @@
 // Kugelphysik: Gleiten/Rollen mit Spin, Kugel-Kugel-Stöße mit Reibung (Throw),
 // Bandenstöße mit erhöhter Bandennase, Taschen mit Backen.
-import { BALL_R as R, TABLE_L, TABLE_W, CORNER_MOUTH, MIDDLE_MOUTH, PHYS } from './constants.js';
+import { BALL_R as R, TABLE_L, TABLE_W, CORNER_MOUTH, MIDDLE_MOUTH, PHYS, MAX_TIP } from './constants.js';
 
 const HW = TABLE_W / 2, HL = TABLE_L / 2;
 const R2 = R * R;
@@ -104,8 +104,10 @@ export function strike(cue, aim, power, tipX, tipY) {
   let ddx = dx - rx * tipX * PHYS.squirt, ddz = dz - rz * tipX * PHYS.squirt;
   const l = Math.hypot(ddx, ddz); ddx /= l; ddz /= l;
   cue.vx = ddx * v; cue.vz = ddz * v;
-  // Drehimpuls aus exzentrischem Treffpunkt: w = 5 v b / (2 R)
-  const k = 2.5 * v / R;
+  // Drehimpuls aus exzentrischem Treffpunkt, linear im Versatz: am äußersten Treffpunkt (MAX_TIP)
+  // erreicht der Spin PHYS.maxSpin (Umfangsgeschwindigkeit / Kugelgeschwindigkeit). Die reine
+  // Starrkörperformel w = 5 v b / (2 R) ergäbe dort unrealistische 1,55.
+  const k = PHYS.maxSpin / MAX_TIP * v / R;
   cue.wx = k * tipY * ddz;
   cue.wz = -k * tipY * ddx;
   cue.wy = k * tipX;
@@ -208,15 +210,22 @@ function collideSegment(b, s, events) {
   const Nx = NOSE_COS * nx, Ny = -NOSE_SIN, Nz = NOSE_COS * nz;
   const sn = sx * Nx + sy * Ny + sz * Nz;
   const tx = sx - sn * Nx, ty = sy - sn * Ny, tz = sz - sn * Nz;
-  const st = Math.hypot(tx, ty, tz);
-  if (st > 1e-7) {
-    const Jt = Math.min(PHYS.muCushion * Jn, st / 3.5);
-    const ux = tx / st, uy = ty / st, uz = tz / st;
-    b.vx -= Jt * ux; b.vz -= Jt * uz;
-    const k = -2.5 * Jt / R2;
+  const applyFriction = (J, ux, uy, uz) => {
+    b.vx -= J * ux; b.vz -= J * uz;
+    const k = -2.5 * J / R2;
     b.wx += k * (ry * uz - rz * uy);
     b.wy += k * (rz * ux - rx * uz);
     b.wz += k * (rx * uy - ry * ux);
+  };
+  const wy0 = b.wy; // Seiteneffet beim Auftreffen
+  const st = Math.hypot(tx, ty, tz);
+  if (st > 1e-7) applyFriction(Math.min(PHYS.muCushion * Jn, st / 3.5), tx / st, ty / st, tz / st);
+  // Zusätzlicher Griff nur für Seiteneffet: lenkt die Kugel waagerecht entlang der Bande ab
+  // (ohne Effet bleibt der Abprallwinkel unverändert)
+  if (wy0 !== 0) {
+    const hx = -nz, hz = nx;
+    const spinSlip = wy0 * R * NOSE_COS; // Umfangsgeschwindigkeit des Effets am Kontaktpunkt
+    applyFriction(Math.sign(spinSlip) * Math.min(PHYS.cushionSideGrip * Jn, Math.abs(spinSlip) / 3.5), hx, 0, hz);
   }
   events.push({ type: 'cushion', ball: b, speed: -vn });
 }
