@@ -162,8 +162,9 @@ const SCENES = [
       return { balls, shot: { ...shot, aim: potAim(balls, red, pocket, shot) } };
     },
     cam: (t) => ({
-      pos: [lerp(1.62, 1.56, t / 6), lerp(-0.17, -0.19, t / 6), lerp(0.62, 0.5, t / 6)],
-      look: [0.95, -0.27, lerp(0.17, 0.2, t / 6)], roll: 0.03,
+      // nah an Ring und Rinne (Rinnenhöhe ca. -0,23 m), mit langsamer Fahrt
+      pos: [lerp(1.39, 1.35, t / 6), lerp(-0.17, -0.19, t / 6), lerp(0.47, 0.4, t / 6)],
+      look: [0.955, -0.22, lerp(0.19, 0.21, t / 6)], roll: 0.03,
     }),
   },
   {
