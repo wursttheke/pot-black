@@ -393,10 +393,12 @@ function computePrediction() {
 const camPos = new THREE.Vector3(0, 3, 4), camLook = new THREE.Vector3(), camUp = new THREE.Vector3(0, 1, 0);
 const tPos = new THREE.Vector3(), tLook = new THREE.Vector3(), tUp = new THREE.Vector3();
 let tFov = 50; // Bildwinkel der aktuellen Einstellung (nur die TV-Hauptkamera zoomt)
+let tShift = 0; // senkrechte Bildverschiebung in Pixeln (nur TV-Hauptkamera, in das freie Bildband)
 const tmpF = new THREE.Vector3(), tmpR = new THREE.Vector3(), Y_UP = new THREE.Vector3(0, 1, 0);
 
 function cameraTarget() {
   tFov = BASE_FOV;
+  tShift = 0;
   const cam = view.camera;
   if (st.debugCam) { // per Konsole: snooker.st.debugCam = { pos: [x, y, z], look: [x, y, z] }
     tPos.set(...st.debugCam.pos); tLook.set(...st.debugCam.look); tUp.set(0, 1, 0);
@@ -455,14 +457,21 @@ function cameraTarget() {
 const FRAME_W = CUSHION_WIDTH + RAIL_WIDTH; // Bande + Holzrahmen
 const TABLE_HALF_X = TABLE_L / 2 + FRAME_W, TABLE_HALF_Y = TABLE_W / 2 + FRAME_W; // Bildschirm-Breite = Tischlänge
 let fitCache = null, fitAt = 0;
+// Bildschirmrechteck eines sichtbaren Bedienelements (oder null)
+function hudRect(id) {
+  const e = $(id);
+  if (!e || e.classList.contains('hidden') || !e.offsetParent && getComputedStyle(e).position !== 'fixed') return null;
+  const r = e.getBoundingClientRect();
+  return r.width && r.height ? r : null;
+}
 function topViewFit() {
   const now = performance.now();
   if (fitCache && now - fitAt < 400) return fitCache;
   const W = innerWidth, H = innerHeight, pad = 10;
-  const rect = id => { const e = $(id); if (!e || e.classList.contains('hidden') || !e.offsetParent && getComputedStyle(e).position !== 'fixed') return null; const r = e.getBoundingClientRect(); return r.width && r.height ? r : null; };
+  const rect = hudRect;
   const hudOn = !$('hud').classList.contains('hidden');
-  const topEls = hudOn ? ['board', 'tools'].map(rect).filter(Boolean) : [];
-  const bottomEls = hudOn ? ['controls', 'status', 'btnPlace', 'btnShoot'].map(rect).filter(Boolean) : [];
+  const topEls = hudOn ? ['tools'].map(rect).filter(Boolean) : [];
+  const bottomEls = hudOn ? ['board', 'controls', 'status', 'btnPlace', 'btnShoot'].map(rect).filter(Boolean) : [];
   const leftEls = [];
   const rightEls = hudOn ? ['tools', 'controls'].map(rect).filter(Boolean) : [];
   const areas = [];
@@ -472,12 +481,12 @@ function topViewFit() {
     const bottom = Math.min(H, ...bottomEls.map(r => r.top)) - pad;
     areas.push({ left: pad, right: W - pad, top, bottom });
   }
-  // Spalte zwischen links und rechts, nur unter der Anzeigetafel und über der Statuszeile
+  // Spalte zwischen links und rechts, über Statuszeile und Anzeigetafel
   {
-    const board = rect('board'), status = rect('status');
+    const lower = ['status', 'board'].map(rect).filter(Boolean);
     const left = Math.max(0, ...leftEls.map(r => r.right)) + pad;
     const right = Math.min(W, ...rightEls.map(r => r.left)) - pad;
-    areas.push({ left, right, top: (board ? board.bottom : 0) + pad, bottom: (status ? status.top : H) - pad });
+    areas.push({ left, right, top: pad, bottom: Math.min(H, ...lower.map(r => r.top)) - pad });
   }
   let best = null;
   for (const a of areas) {
@@ -500,17 +509,61 @@ function broadcastActive() {
 }
 
 // Hauptkamera der TV-Regie: weiter weg und mit engerem Bildwinkel (Teleobjektiv), damit sich der
-// Tisch nach hinten weniger verjüngt; der Abstand wird so umgerechnet, dass der Ausschnitt gleich bleibt
-const BASE_FOV = 50, TV_FOV = 36, TV_ZOOM = 1.12; // TV_ZOOM > 1: enger als der berechnete Ausschnitt
+// Tisch nach hinten weniger verjüngt
+const BASE_FOV = 50, TV_FOV = 36;
+// Freies Bildband für die TV-Hauptkamera: zwischen Buttons/Einblendungen oben und Statuszeile,
+// Anzeigetafel und Reglern unten (alle 400 ms neu gemessen)
+let bandCache = null, bandAt = 0;
+function tvFreeBand() {
+  const now = performance.now();
+  if (bandCache && now - bandAt < 400) return bandCache;
+  const H = innerHeight;
+  const tools = hudRect('tools');
+  const top = tools && tools.width > innerWidth * 0.5 ? tools.bottom + 8 : 56;
+  const lower = ['status', 'board', 'controls'].map(hudRect).filter(Boolean);
+  const bottom = Math.min(H, ...lower.map(r => r.top)) - 8;
+  bandCache = { top, bottom: Math.max(top + 120, bottom) };
+  bandAt = now;
+  return bandCache;
+}
+
+// Hinter der Kopfbande (Seite mit dem Spot der Schwarzen), erhöht, Blick über den ganzen Tisch.
+// Abstand und Bildverschiebung werden so bestimmt, dass der Tisch das freie Bildband zwischen den
+// Bedienelementen ausfüllt (Ecken projiziert, Abstand per Intervallhalbierung); alle 400 ms neu
+let tvCache = null, tvAt = 0;
+const tvProbe = new THREE.PerspectiveCamera();
+const tvCorners = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => new THREE.Vector3(sx * (TABLE_W / 2 + 0.16), 0.05, sz * (TABLE_L / 2 + 0.16)));
+const tvTmp = new THREE.Vector3();
 function tvMainCam() {
-  // Hinter der Kopfbande (Seite mit dem Spot der Schwarzen), erhöht, Blick über den ganzen Tisch
-  const cam = view.camera;
-  const half = THREE.MathUtils.degToRad(BASE_FOV / 2);
-  const hHalf = Math.atan(Math.tan(half) * cam.aspect);
-  // Zoom nur, solange der Tisch in der Breite ins Bild passt (Hochformat: die Breite begrenzt)
-  const d = Math.max(4.0 / TV_ZOOM, 1.3 / Math.tan(hHalf)) * Math.tan(half) / Math.tan(THREE.MathUtils.degToRad(TV_FOV / 2));
+  const now = performance.now();
+  if (tvCache && now - tvAt < 400) return tvCache;
+  const W = innerWidth, H = innerHeight, band = tvFreeBand();
   const el = 0.56; // ca. 32° über der Tischebene
-  return { pos: [0, d * Math.sin(el), -0.25 - d * Math.cos(el)], look: [0, 0, -0.1], fov: TV_FOV };
+  const look = [0, 0, -0.1];
+  tvProbe.fov = TV_FOV; tvProbe.aspect = W / H; tvProbe.updateProjectionMatrix();
+  const place = d => {
+    tvProbe.position.set(0, d * Math.sin(el), -0.25 - d * Math.cos(el));
+    tvProbe.lookAt(...look);
+    tvProbe.updateMatrixWorld();
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const c of tvCorners) {
+      tvTmp.copy(c).project(tvProbe);
+      const x = (tvTmp.x + 1) / 2 * W, y = (1 - tvTmp.y) / 2 * H;
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+    }
+    return { x0, x1, y0, y1 };
+  };
+  const bandH = (band.bottom - band.top) * 0.94, bandW = W * 0.94;
+  let lo = 2, hi = 30;
+  for (let i = 0; i < 24; i++) {
+    const d = (lo + hi) / 2, p = place(d);
+    if (p.y1 - p.y0 > bandH || p.x1 - p.x0 > bandW) lo = d; else hi = d;
+  }
+  const p = place(hi);
+  tvCache = { pos: tvProbe.position.toArray(), look, fov: TV_FOV,
+    shiftY: (p.y0 + p.y1) / 2 - (band.top + band.bottom) / 2 };
+  tvAt = now;
+  return tvCache;
 }
 
 // Schnittfolge für den kommenden Stoß vorausberechnen (gleiche Physik wie die Anzeige):
@@ -553,6 +606,7 @@ function broadcastCam() {
   }
   tPos.set(...cam.pos); tLook.set(...cam.look); tUp.set(0, 1, 0);
   tFov = cam.fov || BASE_FOV;
+  tShift = cam.shiftY || 0;
 }
 
 // Läuft die Weiße aus dem Bild, schwenkt die Kamera auf die Mitte zwischen ursprünglichem
@@ -590,6 +644,15 @@ function updateCamera(dt) {
   const cam = view.camera;
   const fov = cut ? tFov : cam.fov + (tFov - cam.fov) * k;
   if (Math.abs(fov - cam.fov) > 0.01) { cam.fov = fov; cam.updateProjectionMatrix(); }
+  // Bildverschiebung: nur bei Schnitten wechseln (TV-Regie schneidet hart), sonst weich nachführen
+  const cur = cam.view && cam.view.enabled ? cam.view.offsetY : 0;
+  const shift = cut ? tShift : cur + (tShift - cur) * k;
+  if (Math.abs(shift) > 0.5) {
+    const v = cam.view;
+    if (!v || !v.enabled || Math.abs(v.offsetY - shift) > 0.5 || v.fullWidth !== innerWidth || v.fullHeight !== innerHeight) {
+      cam.setViewOffset(innerWidth, innerHeight, 0, shift, innerWidth, innerHeight);
+    }
+  } else if (cam.view && cam.view.enabled) cam.clearViewOffset();
   // Nebel mit dem Kameraabstand verschieben: aus größerer Entfernung wird der Tisch sonst dunkler
   const extra = Math.max(0, camPos.length() - 4.5);
   view.scene.fog.near = 6 + extra; view.scene.fog.far = 14 + extra;

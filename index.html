@@ -37,7 +37,8 @@
   button:disabled { opacity: 0.45; cursor: default; }
 
   /* Anzeigetafel */
-  #board { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; gap: 0; padding: 0; overflow: hidden; }
+  /* Anzeigetafel unten mittig, Statuszeile direkt darüber */
+  #board { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; align-items: stretch; gap: 0; padding: 0; overflow: hidden; }
   .player { padding: 8px 18px; min-width: 170px; display: flex; justify-content: space-between; align-items: center; gap: 14px; opacity: 0.55; }
   .player.active { opacity: 1; background: rgba(232,184,74,0.14); box-shadow: inset 0 -3px 0 var(--accent); }
   .player .name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
@@ -49,9 +50,9 @@
   .on-red { background: #b00d18; } .on-yellow { background: #c9a100; } .on-green { background: #0a6a2e; } .on-brown { background: #6a3418; }
   .on-blue { background: #1240b0; } .on-pink { background: #d9628e; } .on-black { background: #000; border: 1px solid #555; } .on-colour { background: linear-gradient(90deg,#c9a100,#0a6a2e,#6a3418,#1240b0,#d9628e,#000); }
 
-  #msg { position: fixed; top: 84px; left: 50%; transform: translateX(-50%); padding: 8px 16px; opacity: 0; transition: opacity .3s; pointer-events: none; max-width: 80vw; text-align: center; }
+  #msg { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); padding: 8px 16px; opacity: 0; transition: opacity .3s; pointer-events: none; max-width: calc(100vw - 320px); text-align: center; }
   #msg.show { opacity: 1; }
-  #status { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); padding: 6px 14px; color: var(--muted); font-size: 13px; }
+  #status { position: fixed; bottom: 117px; left: 50%; transform: translateX(-50%); padding: 6px 14px; color: var(--muted); font-size: 13px; }
 
   /* Stoßstärke */
   /* Stärke und Treffpunkt nebeneinander unten rechts – beides mit einer Hand erreichbar */
@@ -87,7 +88,7 @@
   #btnShoot { background: #8a5a12; border-color: #c38a2a; font-weight: 600; }
   #btnShoot:hover:not(:disabled) { background: #a06a18; }
   #tools button.on { border-color: var(--accent); }
-  #btnPlace { position: fixed; left: 50%; bottom: 20vh; transform: translateX(-50%); z-index: 4;
+  #btnPlace { position: fixed; left: 50%; bottom: max(20vh, 190px); transform: translateX(-50%); z-index: 4;
     padding: 14px 44px; font-size: 20px; font-weight: 700; letter-spacing: .02em; border-radius: 12px;
     background: #8a5a12; border: 1px solid #c38a2a; box-shadow: 0 6px 24px rgba(0,0,0,0.45); }
   #btnPlace:hover { background: #a06a18; }
@@ -217,19 +218,24 @@
     .hint { margin-top: 10px !important; font-size: 11px; }
   }
   @media (max-height: 640px) { .brand .sub, #menu .hint { display: none; } }
+  /* Mittlere Breiten: Tafel und Statuszeile links unten, sonst ragen sie in die Regler rechts */
+  @media (min-width: 761px) and (max-width: 1100px) {
+    #board, #status { left: 12px; transform: none; }
+  }
   @media (max-width: 760px) {
     .player { min-width: 0; padding: 6px 10px; } .player .score { font-size: 20px; }
     #mid { display: none; } #spin { width: 96px; height: 96px; } #power { min-height: 90px; width: 28px; }
     #controls { right: 10px; bottom: 10px; gap: 6px; }
-    #status { bottom: 172px; left: auto; right: 10px; transform: none; max-width: calc(100vw - 20px); font-size: 12px; }
-    /* Oben: Anzeigetafel über die volle Breite, darunter die Buttons in einer Reihe, darunter Einblendungen */
-    #board { left: 10px; right: 10px; top: 10px; transform: none; }
+    #status { bottom: 221px; left: auto; right: 10px; transform: none; max-width: calc(100vw - 20px); font-size: 12px; }
+    /* Unten: Anzeigetafel über die volle Breite direkt über den Reglern, darüber die Statuszeile;
+       oben die Buttons in einer Reihe, darunter Einblendungen */
+    #board { left: 10px; right: 10px; bottom: 173px; transform: none; }
     .player { flex: 1; }
     .player .name { max-width: 90px; }
-    #tools { top: 64px; left: 10px; right: 10px; flex-direction: row; gap: 6px; }
+    #tools { top: 10px; left: 10px; right: 10px; flex-direction: row; gap: 6px; }
     #tools > button, #tools > .dropdown { flex: 1; min-width: 0; }
     #tools button { padding: 7px 6px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    #msg { top: 108px; max-width: calc(100vw - 20px); font-size: 12px; }
+    #msg { top: 54px; max-width: calc(100vw - 20px); font-size: 12px; }
     /* Unten: Stärke links, Stoß mittig, Treffpunkt rechts; der Stoß-Button übernimmt auch das Platzieren */
     #controls { left: 10px; justify-content: space-between; pointer-events: none; }
     #controls > * { pointer-events: auto; }
